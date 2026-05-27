@@ -1,0 +1,2 @@
+# wisemind-obsidian
+wisemind-obsidian
