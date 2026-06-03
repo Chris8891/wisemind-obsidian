@@ -85,6 +85,17 @@ test('build output contains Obsidian plugin files', () => {
   assert.ok(existsSync('dist/manifest.json'));
 });
 
+test('Tailwind CSS output keeps prefixed utilities for Obsidian views', async () => {
+  const source = await readFile('src/styles.css', 'utf8');
+  const builtCss = await readFile('dist/styles.css', 'utf8');
+
+  assert.match(source, /@source "\.\/\*\*\/\*\.vue";/);
+  assert.match(source, /@source "\.\/\*\*\/\*\.ts";/);
+  assert.match(builtCss, /\.wm\\:flex\{/);
+  assert.match(builtCss, /\.wm\\:w-full\{/);
+  assert.match(builtCss, /\.wm\\:text-xs\{/);
+});
+
 test('note mention search returns title and folder matches with title-first display data', () => {
   const notes = [
     {

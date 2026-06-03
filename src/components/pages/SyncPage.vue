@@ -282,7 +282,9 @@
       snapshot.value = loaded.snapshot;
       wiseMindItems.value = loaded.items;
       selectedWiseMind.value = new Set(
-        [...selectedWiseMind.value].filter(key => loaded.items.some(item => sourceKey(item) === key)),
+        [...selectedWiseMind.value].filter(key =>
+          loaded.items.some(item => sourceKey(item) === key),
+        ),
       );
       selectedDestinations.value = new Set(getDefaultDestinationKeys(loaded.snapshot));
       applyDefaultPlan();
@@ -702,8 +704,9 @@
       }
       if (group.id === 'dest:knowledge') {
         const preferred =
-          group.items.find(item => item.title === plugin.settings.contextMenuDefaults.knowledgeBaseName) ||
-          group.items[0];
+          group.items.find(
+            item => item.title === plugin.settings.contextMenuDefaults.knowledgeBaseName,
+          ) || group.items[0];
         if (preferred) keys.push(preferred.key);
       }
     });
@@ -1249,10 +1252,13 @@
           <span>{{ pendingSyncPreview.warningText }}</span>
         </div>
         <footer class="modal-action">
-          <button class="wm-button" type="button" @click="previewDialogOpen = false"
-            >取消</button
+          <button class="wm-button" type="button" @click="previewDialogOpen = false">取消</button>
+          <button
+            class="wm-button is-primary"
+            type="button"
+            :disabled="running"
+            @click="confirmExecute"
           >
-          <button class="wm-button is-primary" type="button" :disabled="running" @click="confirmExecute">
             <span v-if="running" class="loading loading-spinner loading-sm"></span>
             确认同步
           </button>
@@ -1343,7 +1349,7 @@
       </div>
     </section>
 
-    <div v-if="planPickerOpen" class="modal modal-open" @click.self="planPickerOpen = false">
+    <div v-if="planPickerOpen" class="modal modal-open wm-plan-modal">
       <section
         class="modal-box relative wm-plan-dialog"
         role="dialog"
@@ -1396,7 +1402,7 @@
       </section>
     </div>
 
-    <div v-if="savePlanOpen" class="modal modal-open" @click.self="savePlanOpen = false">
+    <div v-if="savePlanOpen" class="modal modal-open wm-plan-modal">
       <section
         class="modal-box relative wm-plan-dialog"
         role="dialog"
@@ -1422,12 +1428,15 @@
             </div>
           </div>
         </div>
-        <input
-          v-model="pendingPlanName"
-          class="wm-input"
-          placeholder="方案名称"
-          @keydown.enter.prevent="saveCurrentAsPlan"
-        />
+        <div class="wm-plan-summary-input">
+          <span class="title">方案名称：</span>
+          <input
+            v-model="pendingPlanName"
+            class="wm-input wm-plan-name-input"
+            placeholder="方案名称"
+            @keydown.enter.prevent="saveCurrentAsPlan"
+          />
+        </div>
         <footer class="wm-dialog-actions">
           <button class="wm-button" type="button" @click="savePlanOpen = false">取消</button>
           <button class="wm-button is-primary" type="button" @click="saveCurrentAsPlan"

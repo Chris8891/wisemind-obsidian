@@ -118,7 +118,10 @@
 
   const cardTypeLabel = (card: AssistantCardDraft) => {
     const value = card.type || cardStructure.value;
-    return structureOptions.value.find(item => item.value === value)?.label || t('cards.cardTypeFallback');
+    return (
+      structureOptions.value.find(item => item.value === value)?.label ||
+      t('cards.cardTypeFallback')
+    );
   };
 
   const syncCardSettings = async () => {
@@ -130,7 +133,8 @@
     plugin.settings.assistantDefaults.cardStructure = cardStructure.value;
     plugin.settings.assistantDefaults.defaultCardDeckName =
       deckName.value.trim() || t('cards.defaultDeckName');
-    plugin.settings.assistantDefaults.defaultCardFolderName = folderName.value.trim() || t('cards.defaultFolderName');
+    plugin.settings.assistantDefaults.defaultCardFolderName =
+      folderName.value.trim() || t('cards.defaultFolderName');
     await plugin.saveSettings();
   };
 
@@ -249,7 +253,8 @@
   const selectDeck = async (deck: any) => {
     deckName.value = itemTitle(deck);
     deckId.value = itemId(deck);
-    folderName.value = plugin.settings.assistantDefaults.defaultCardFolderName || t('cards.defaultFolderName');
+    folderName.value =
+      plugin.settings.assistantDefaults.defaultCardFolderName || t('cards.defaultFolderName');
     folders.value = [];
   };
 
@@ -265,7 +270,9 @@
 
   const ensureDeckId = async () => {
     if (deckId.value) return deckId.value;
-    const deck: any = await plugin.api.resolveCardDeck(deckName.value.trim() || t('cards.defaultDeckName'));
+    const deck: any = await plugin.api.resolveCardDeck(
+      deckName.value.trim() || t('cards.defaultDeckName'),
+    );
     deckId.value = deck?.id ?? deck?.data?.id;
     return deckId.value;
   };
@@ -498,9 +505,9 @@
         </label>
 
         <footer class="wm-actions wm-card-generate-actions">
-          <button v-if="loading" class="wm-button" type="button" @click="cancelGenerate"
-            >{{ t('cards.cancelGenerate') }}</button
-          >
+          <button v-if="loading" class="wm-button" type="button" @click="cancelGenerate">{{
+            t('cards.cancelGenerate')
+          }}</button>
           <button class="wm-button is-primary" type="button" :disabled="loading" @click="generate">
             <span v-if="loading" class="wm-loading-spinner"></span>
             <ArrowPathIcon v-else class="wm-icon" />
@@ -513,7 +520,9 @@
         <div class="wm-panel-title wm-card-preview-title">
           <div class="wm-panel-title">
             <BookmarkSquareIcon class="wm-panel-title-icon" />
-            <div class="wm-section-title">{{ t('cards.preview', {count: cards.length || cardCount}) }}</div>
+            <div class="wm-section-title">{{
+              t('cards.preview', {count: cards.length || cardCount})
+            }}</div>
           </div>
           <button
             v-if="cards.length"
@@ -524,7 +533,12 @@
             <CheckCircleIcon class="wm-icon" />
             {{ t('cards.saveToWiseMind') }}
           </button>
-          <button v-if="cards.length" class="wm-button" type="button" @click="insertCardsToCurrentNote">
+          <button
+            v-if="cards.length"
+            class="wm-button"
+            type="button"
+            @click="insertCardsToCurrentNote"
+          >
             <DocumentTextIcon class="wm-icon" />
             {{ t('cards.insertCurrentNote') }}
           </button>
@@ -597,7 +611,11 @@
     />
     <WiseMindConnectionDialog v-model:open="connectionDialogOpen" />
 
-    <div v-if="deckPickerOpen" class="modal modal-open" @click.self="deckPickerOpen = false">
+    <div
+      v-if="deckPickerOpen"
+      class="modal modal-open full-modal"
+      @click.self="deckPickerOpen = false"
+    >
       <section
         class="modal-box relative wm-card-picker-dialog"
         role="dialog"
@@ -612,7 +630,11 @@
         >
         <h3 class="wm-dialog-title">{{ t('cards.deckDialogTitle') }}</h3>
         <div class="wm-card-picker-toolbar">
-          <input v-model="deckSearch" class="wm-input" :placeholder="t('cards.deckSearchPlaceholder')" />
+          <input
+            v-model="deckSearch"
+            class="wm-input"
+            :placeholder="t('cards.deckSearchPlaceholder')"
+          />
           <button class="wm-button" type="button" @click="createDeck">
             <PlusIcon class="wm-icon" /> {{ t('cards.newDeck') }}
           </button>
@@ -631,20 +653,26 @@
             />
             <span>{{ itemTitle(deck) }}</span>
           </label>
-          <div v-if="!loadingDecks && !filteredDecks.length" class="wm-sync-empty"
-            >{{ t('cards.noDecks') }}</div
-          >
+          <div v-if="!loadingDecks && !filteredDecks.length" class="wm-sync-empty">{{
+            t('cards.noDecks')
+          }}</div>
         </div>
         <footer class="wm-dialog-actions">
-          <button class="wm-button" type="button" @click="deckPickerOpen = false">{{ t('cards.cancel') }}</button>
-          <button class="wm-button is-primary" type="button" @click="deckPickerOpen = false"
-            >{{ t('cards.confirm') }}</button
-          >
+          <button class="wm-button" type="button" @click="deckPickerOpen = false">{{
+            t('cards.cancel')
+          }}</button>
+          <button class="wm-button is-primary" type="button" @click="deckPickerOpen = false">{{
+            t('cards.confirm')
+          }}</button>
         </footer>
       </section>
     </div>
 
-    <div v-if="folderPickerOpen" class="modal modal-open" @click.self="folderPickerOpen = false">
+    <div
+      v-if="folderPickerOpen"
+      class="modal modal-open full-modal"
+      @click.self="folderPickerOpen = false"
+    >
       <section
         class="modal-box relative wm-card-picker-dialog"
         role="dialog"
@@ -659,7 +687,11 @@
         >
         <h3 class="wm-dialog-title">{{ t('cards.folderDialogTitle') }}</h3>
         <div class="wm-card-picker-toolbar">
-          <input v-model="folderSearch" class="wm-input" :placeholder="t('cards.folderSearchPlaceholder')" />
+          <input
+            v-model="folderSearch"
+            class="wm-input"
+            :placeholder="t('cards.folderSearchPlaceholder')"
+          />
           <button class="wm-button" type="button" @click="createFolder">
             <PlusIcon class="wm-icon" /> {{ t('cards.newFolder') }}
           </button>
@@ -678,15 +710,17 @@
             />
             <span>{{ itemTitle(folder) }}</span>
           </label>
-          <div v-if="!loadingFolders && !filteredFolders.length" class="wm-sync-empty"
-            >{{ t('cards.noFolders') }}</div
-          >
+          <div v-if="!loadingFolders && !filteredFolders.length" class="wm-sync-empty">{{
+            t('cards.noFolders')
+          }}</div>
         </div>
         <footer class="wm-dialog-actions">
-          <button class="wm-button" type="button" @click="folderPickerOpen = false">{{ t('cards.cancel') }}</button>
-          <button class="wm-button is-primary" type="button" @click="folderPickerOpen = false"
-            >{{ t('cards.confirm') }}</button
-          >
+          <button class="wm-button" type="button" @click="folderPickerOpen = false">{{
+            t('cards.cancel')
+          }}</button>
+          <button class="wm-button is-primary" type="button" @click="folderPickerOpen = false">{{
+            t('cards.confirm')
+          }}</button>
         </footer>
       </section>
     </div>

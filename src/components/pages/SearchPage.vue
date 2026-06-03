@@ -6,12 +6,14 @@
     ClockIcon,
     DocumentTextIcon,
     MagnifyingGlassIcon,
+    XMarkIcon,
   } from '@heroicons/vue/24/outline';
   import {Notice} from 'obsidian';
 
   import {usePlugin} from '../../composables/usePlugin';
   import {useVaultNotes} from '../../composables/useVaultNotes';
   import {openObsidianNote} from '../../services/noteNavigation';
+  import WmTooltip from '../WmTooltip.vue';
 
   const emit = defineEmits<{
     openChat: [message: string];
@@ -44,15 +46,17 @@
   const plugin = usePlugin();
   const {notes, refresh} = useVaultNotes();
   const query = ref('');
+  const searchedKeyword = ref('');
   const scope = ref<SearchScope>('all');
   const loading = ref(false);
   const wiseMindResults = ref<SearchResult[]>([]);
   const searched = ref(false);
   const searchHistory = ref<string[]>([]);
   const historyOpen = ref(false);
+  const searchRequestId = ref(0);
 
   const obsidianResults = computed<SearchResult[]>(() => {
-    const keyword = query.value.trim().toLowerCase();
+    const keyword = searchedKeyword.value.trim().toLowerCase();
     if (!keyword || scope.value === 'wisemind') return [];
     return notes.value
       .filter(note =>
@@ -74,6 +78,9 @@
   );
 
   const results = computed(() => [...obsidianResults.value, ...visibleWiseMindResults.value]);
+  const canClearSearchResults = computed(
+    () => searched.value || loading.value || Boolean(searchedKeyword.value),
+  );
 
   const normalizeWiseMindResult = (item: any, index: number): SearchResult => ({
     id: `wisemind:content:${item?.id ?? index}`,
@@ -151,7 +158,7 @@
   };
 
   const highlightedTitleParts = (title: string): HighlightPart[] => {
-    const keyword = query.value.trim();
+    const keyword = searchedKeyword.value.trim();
     if (!keyword) return [{text: title, matched: false}];
 
     const lowerTitle = title.toLowerCase();
@@ -181,7 +188,10 @@
   const search = async () => {
     const keyword = query.value.trim();
     if (!keyword) return;
+    const requestId = searchRequestId.value + 1;
+    searchRequestId.value = requestId;
     searched.value = true;
+    searchedKeyword.value = keyword;
     historyOpen.value = false;
     rememberSearchKeyword(keyword);
     wiseMindResults.value = [];
@@ -194,12 +204,25 @@
         'knowledge-documents',
         'cards',
       ]);
-      wiseMindResults.value = normalizeWiseMindResults(response);
+      if (requestId === searchRequestId.value) {
+        wiseMindResults.value = normalizeWiseMindResults(response);
+      }
     } catch (error: any) {
-      if (scope.value === 'wisemind') new Notice(error?.message || '搜索 WiseMindAI 失败');
+      if (requestId === searchRequestId.value && scope.value === 'wisemind') {
+        new Notice(error?.message || '搜索 WiseMindAI 失败');
+      }
     } finally {
-      loading.value = false;
+      if (requestId === searchRequestId.value) loading.value = false;
     }
+  };
+
+  const clearSearchResults = () => {
+    searchRequestId.value += 1;
+    searched.value = false;
+    searchedKeyword.value = '';
+    wiseMindResults.value = [];
+    loading.value = false;
+    historyOpen.value = false;
   };
 
   const openResult = async (result: SearchResult) => {
@@ -227,7 +250,7 @@
 
   const continueChat = (result: SearchResult) => {
     const source = result.path || result.title;
-    emit('openChat', `请基于「${source}」继续分析：${query.value.trim()}`);
+    emit('openChat', `请基于「${source}」继续分析：${searchedKeyword.value || query.value.trim()}`);
   };
 
   onMounted(() => {
@@ -243,6 +266,17 @@
         <MagnifyingGlassIcon class="wm-title-icon" />
         <h2>统一搜索</h2>
       </div>
+      <WmTooltip content="清空搜索结果">
+        <button
+          class="wm-icon-button"
+          type="button"
+          :disabled="!canClearSearchResults"
+          aria-label="清空搜索结果"
+          @click="clearSearchResults"
+        >
+          <XMarkIcon class="wm-icon" />
+        </button>
+      </WmTooltip>
     </header>
 
     <div class="wm-search-layout">

@@ -1,5 +1,7 @@
 @import "tailwindcss/theme" layer(theme) prefix(wm);
 @import "tailwindcss/utilities" layer(utilities) prefix(wm);
+@source "./**/*.vue";
+@source "./**/*.ts";
 
 .wisemindai-obsidian-view {
   user-select: text;
@@ -761,6 +763,11 @@
   padding: 4px 6px 4px 10px;
   background: var(--background-primary);
   color: var(--text-normal);
+  font-size: 12px;
+}
+.wm-source-note-chip .wm-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .wm-source-note-chip > span {
@@ -1117,12 +1124,13 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
+  margin-top: 8px;
 }
 
 .wm-card-picker-list {
   display: grid;
   align-content: start;
-  gap: 6px;
+  gap: 0px;
   min-height: 180px;
   max-height: 54vh;
   overflow: auto;
@@ -1716,6 +1724,18 @@
   width: min(680px, 100%);
 }
 
+.wisemindai-obsidian-root .modal.modal-open.wm-plan-modal,
+.full-modal {
+  position: fixed !important;
+  width: 100% !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+}
+
+.wm-dialog-title {
+  margin: 0 32px 12px 0;
+}
+
 .wm-plan-list {
   display: grid;
   gap: 8px;
@@ -1776,11 +1796,16 @@
   padding: 10px;
 }
 
+.wm-plan-name-input {
+  margin: 12px 0;
+}
+
 .wm-plan-summary-row {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
+  font-size: 12px;
 }
 
 .wm-plan-summary-row > span {
@@ -1804,6 +1829,14 @@
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.wm-plan-summary-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wm-plan-summary-input .title {
+  flex-shrink: 0;
 }
 
 .wm-sync-category-tabs {
@@ -1906,7 +1939,7 @@
 .wm-history-dialog {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
   border-radius: 14px;
   padding: 16px;
 }
@@ -1924,7 +1957,6 @@
   justify-content: space-between;
   gap: 16px;
   padding: 0 40px 10px 0;
-  border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .wm-history-dialog-header .wm-dialog-title {
