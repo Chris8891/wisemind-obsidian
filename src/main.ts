@@ -1,6 +1,5 @@
-import { addIcon, Notice, Plugin, TAbstractFile } from 'obsidian';
+import { addIcon, Notice, Plugin, setIcon, TAbstractFile } from 'obsidian';
 
-import wiseMindLogoIcon from './assets/icons/wisemindai-logo.svg?raw';
 import {
   type EditorRewriteAction,
   type EditorRewriteLabels,
@@ -56,7 +55,7 @@ export default class WiseMindObsidianPlugin extends Plugin {
 
     const ribbonIcon = this.addRibbonIcon(WISEMIND_ICON_ID, 'WiseMindAI', () => void this.activateView());
     if (!ribbonIcon.querySelector('svg')) {
-      ribbonIcon.innerHTML = wiseMindLogoIcon;
+      setIcon(ribbonIcon, WISEMIND_ICON_ID);
     }
 
     this.registerCommands();

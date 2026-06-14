@@ -111,7 +111,9 @@ export class WiseMindSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     const t = (key: string) => translate(this.plugin.settings.assistantDefaults.language, key);
     containerEl.empty();
-    containerEl.createEl('h2', { text: t('settings.nativeTitle') });
+    new Setting(containerEl)
+      .setName(t('settings.nativeTitle'))
+      .setHeading();
 
     new Setting(containerEl)
       .setName(t('settings.language'))

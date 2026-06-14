@@ -9,6 +9,7 @@ declare module 'obsidian' {
   }
 
   export function addIcon(iconId: string, svgContent: string): void;
+  export function setIcon(parent: HTMLElement, iconId: string): void;
   export function openExternal(url: string): Promise<void>;
   export const moment: {
     locale(): string;
@@ -51,6 +52,7 @@ declare module 'obsidian' {
     constructor(containerEl: HTMLElement);
     setName(name: string): this;
     setDesc(desc: string): this;
+    setHeading(): this;
     addText(callback: (component: TextComponent) => unknown): this;
     addToggle(callback: (component: ToggleComponent) => unknown): this;
     addButton(callback: (component: ButtonComponent) => unknown): this;
