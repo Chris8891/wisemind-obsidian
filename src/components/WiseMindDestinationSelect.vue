@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from 'vue';
+import {useI18n} from 'vue-i18n';
 
 import {usePlugin} from '../composables/usePlugin';
 import {
@@ -19,6 +20,7 @@ const emit = defineEmits<{
 }>();
 
 const plugin = usePlugin();
+const {t} = useI18n();
 const loading = ref(false);
 const options = ref<Array<{value: string; label: string; disabled?: boolean}>>([]);
 const ROOT_VALUE = '__wisemind_root__';
@@ -27,14 +29,23 @@ const EMPTY_VALUE = '__wisemind_empty__';
 const selectValue = computed(() => props.modelValue || ROOT_VALUE);
 
 const placeholder = computed(() => {
-  if (props.target === 'knowledge') return '选择知识库';
-  return '选择文件夹';
+  if (props.target === 'knowledge') return t('destinationSelect.chooseKnowledge');
+  return t('destinationSelect.chooseFolder');
 });
 
 const loadOptions = async () => {
   loading.value = true;
   try {
-    const items = await loadWiseMindDestinationOptions(plugin.api, props.target);
+    const items = await loadWiseMindDestinationOptions(plugin.api, props.target, {
+      notes: t('destinationOptions.notes'),
+      documents: t('destinationOptions.documents'),
+      knowledge: t('destinationOptions.knowledge'),
+      noKnowledge: t('destinationOptions.noKnowledge'),
+      createKnowledgeFirst: t('destinationOptions.createKnowledgeFirst'),
+      knowledgeMeta: t('destinationOptions.knowledgeMeta'),
+      rootFolder: t('destinationOptions.rootFolder'),
+      folder: t('destinationOptions.folder'),
+    });
     options.value = items.map(item => ({
       value: item.value || (item.disabled ? EMPTY_VALUE : ROOT_VALUE),
       label: item.label,
@@ -66,11 +77,11 @@ watch(() => props.target, loadOptions);
     <RekaSelect
       :model-value="selectValue"
       :options="options"
-      :placeholder="loading ? '正在读取...' : placeholder"
+      :placeholder="loading ? t('destinationSelect.loading') : placeholder"
       @update:model-value="updateValue"
     />
     <small v-if="target === 'knowledge' && options.length && options.every(item => item.disabled)" class="wm-muted">
-      没有知识库，请先在 WiseMindAI 中创建知识库。
+      {{ t('destinationSelect.noKnowledgeBases') }}
     </small>
   </div>
 </template>

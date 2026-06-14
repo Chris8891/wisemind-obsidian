@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   ArrowPathIcon,
   BookmarkSquareIcon,
@@ -19,89 +21,90 @@ const emit = defineEmits<{
 }>();
 
 const plugin = usePlugin();
+const { t } = useI18n();
 
-const setupChecks = [
-  '先打开 WiseMindAI 桌面端',
-  '在 WiseMindAI 中开启本地 API 服务',
-  '回到 Obsidian 设置页，点击“测试连接”确认可用',
-];
+const setupChecks = computed(() => [
+  t('tutorial.checks.openApp'),
+  t('tutorial.checks.enableApi'),
+  t('tutorial.checks.testConnection'),
+]);
 
-const startCards = [
+const startCards = computed(() => [
   {
-    title: '首次打开',
-    desc: '教程只会在第一次自动出现。点击“我知道了”后，以后可以从左侧导航的“教程”再次打开。',
+    title: t('tutorial.startCards.firstOpenTitle'),
+    desc: t('tutorial.startCards.firstOpenDesc'),
     icon: CheckCircleIcon,
   },
   {
-    title: '首页入口',
-    desc: '首页提供总结、卡片、对话、知识点提取和同步入口，也会显示连接状态和最近任务。',
+    title: t('tutorial.startCards.homeTitle'),
+    desc: t('tutorial.startCards.homeDesc'),
     icon: SparklesIcon,
   },
   {
-    title: '内容范围',
-    desc: '当前主要处理 Markdown 笔记内容。涉及同步时，建议先用少量笔记测试，再扩大范围。',
+    title: t('tutorial.startCards.scopeTitle'),
+    desc: t('tutorial.startCards.scopeDesc'),
     icon: DocumentTextIcon,
   },
-];
+]);
 
-const assistantGuides = [
+const assistantGuides = computed(() => [
   {
-    title: '总结当前笔记',
-    desc: '选择当前笔记、选中文本或多篇笔记后生成总结。结果可以插入当前笔记、保存为新笔记，或保存到 WiseMindAI。',
+    title: t('tutorial.assistantGuides.summaryTitle'),
+    desc: t('tutorial.assistantGuides.summaryDesc'),
     icon: DocumentTextIcon,
   },
   {
-    title: '生成知识卡片',
-    desc: '选择内容来源后设置数量、难度和卡片类型，再选择 WiseMindAI 卡片集与文件夹。生成后可逐张编辑、复制或保存。',
+    title: t('tutorial.assistantGuides.cardsTitle'),
+    desc: t('tutorial.assistantGuides.cardsDesc'),
     icon: BookmarkSquareIcon,
   },
   {
-    title: 'AI 对话',
-    desc: '默认围绕当前笔记提问。输入 @ 可以引用其他笔记；回答可以复制，也可以直接插入当前打开的笔记。',
+    title: t('tutorial.assistantGuides.chatTitle'),
+    desc: t('tutorial.assistantGuides.chatDesc'),
     icon: ChatBubbleOvalLeftEllipsisIcon,
   },
   {
-    title: '提取知识点',
-    desc: '在首页点击“提取知识点”会进入总结流程，用来提炼关键词、概念和后续可追问的问题。',
+    title: t('tutorial.assistantGuides.extractTitle'),
+    desc: t('tutorial.assistantGuides.extractDesc'),
     icon: SparklesIcon,
   },
-];
+]);
 
-const syncSteps = [
+const syncSteps = computed(() => [
   {
-    title: '选方向',
-    desc: 'Obsidian -> WiseMindAI 用来导入当前仓库笔记；WiseMindAI -> Obsidian 用来把本地数据写回仓库。',
+    title: t('tutorial.syncSteps.directionTitle'),
+    desc: t('tutorial.syncSteps.directionDesc'),
     icon: ArrowPathIcon,
   },
   {
-    title: '选内容和位置',
-    desc: '左侧选择来源内容，右侧选择保存目标。文件夹行的复选框可以批量选择，搜索框可以快速定位。',
+    title: t('tutorial.syncSteps.contentTitle'),
+    desc: t('tutorial.syncSteps.contentDesc'),
     icon: DocumentTextIcon,
   },
   {
-    title: '执行并复查',
-    desc: '确认重复内容处理方式后点击“执行同步”。完成后查看同步明细，确认新建、更新、跳过和失败数量。',
+    title: t('tutorial.syncSteps.reviewTitle'),
+    desc: t('tutorial.syncSteps.reviewDesc'),
     icon: CheckCircleIcon,
   },
-];
+]);
 
-const settingsTips = [
+const settingsTips = computed(() => [
   {
-    title: '同步方案',
-    desc: '常用的同步选择可以保存成方案，下次直接套用，适合固定文件夹或固定知识库的工作流。',
+    title: t('tutorial.settingsTips.plansTitle'),
+    desc: t('tutorial.settingsTips.plansDesc'),
     icon: BookmarkSquareIcon,
   },
   {
-    title: '历史记录',
-    desc: '首页和各功能页都可以查看最近任务，方便找回之前生成的总结、卡片或同步结果。',
+    title: t('tutorial.settingsTips.historyTitle'),
+    desc: t('tutorial.settingsTips.historyDesc'),
     icon: ClockIcon,
   },
   {
-    title: '默认位置',
-    desc: '设置页可以调整 WiseMindAI API 地址、写回 Obsidian 的默认文件夹、导入知识库名称和 @ 候选笔记数量。',
+    title: t('tutorial.settingsTips.defaultsTitle'),
+    desc: t('tutorial.settingsTips.defaultsDesc'),
     icon: Cog6ToothIcon,
   },
-];
+]);
 
 const finish = async () => {
   plugin.settings.hasSeenTutorial = true;
@@ -115,28 +118,28 @@ const finish = async () => {
     <header class="wm-page-header">
       <div class="wm-title-line">
         <DocumentTextIcon class="wm-title-icon" />
-        <h2>WiseMindAI 使用教程</h2>
+        <h2>{{ t('tutorial.title') }}</h2>
       </div>
-      <WmTooltip content="关闭教程">
+      <WmTooltip :content="t('tutorial.close')">
         <button class="btn btn-sm btn-circle btn-ghost" type="button" @click="finish">✕</button>
       </WmTooltip>
     </header>
 
     <TabsRoot default-value="start" class="wm-tutorial-tabs">
-      <TabsList class="wm-tutorial-tab-list" aria-label="WiseMindAI 使用教程">
-        <TabsTrigger class="wm-tutorial-tab" value="start">开始前</TabsTrigger>
-        <TabsTrigger class="wm-tutorial-tab" value="assistant">AI 助手</TabsTrigger>
-        <TabsTrigger class="wm-tutorial-tab" value="sync">数据同步</TabsTrigger>
-        <TabsTrigger class="wm-tutorial-tab" value="settings">设置与历史</TabsTrigger>
+      <TabsList class="wm-tutorial-tab-list" :aria-label="t('tutorial.tabsLabel')">
+        <TabsTrigger class="wm-tutorial-tab" value="start">{{ t('tutorial.tabs.start') }}</TabsTrigger>
+        <TabsTrigger class="wm-tutorial-tab" value="assistant">{{ t('tutorial.tabs.assistant') }}</TabsTrigger>
+        <TabsTrigger class="wm-tutorial-tab" value="sync">{{ t('tutorial.tabs.sync') }}</TabsTrigger>
+        <TabsTrigger class="wm-tutorial-tab" value="settings">{{ t('tutorial.tabs.settings') }}</TabsTrigger>
       </TabsList>
 
       <TabsContent value="start" class="wm-tutorial-content">
         <div class="wm-panel wm-tutorial-intro">
           <div class="wm-tutorial-heading">
             <CheckCircleIcon class="wm-panel-title-icon" />
-            <h3>先确认连接，再开始使用</h3>
+            <h3>{{ t('tutorial.intros.startTitle') }}</h3>
           </div>
-          <p>Obsidian 插件会通过 WiseMindAI 的本地 API 读取和写入数据。连接正常后，总结、卡片、对话和同步功能都可以直接使用。</p>
+          <p>{{ t('tutorial.intros.startDesc') }}</p>
           <div class="wm-tutorial-checks">
             <span v-for="check in setupChecks" :key="check">
               <CheckCircleIcon class="wm-icon" />
@@ -159,9 +162,9 @@ const finish = async () => {
         <div class="wm-panel wm-tutorial-intro">
           <div class="wm-tutorial-heading">
             <SparklesIcon class="wm-panel-title-icon" />
-            <h3>在笔记旁边完成 AI 工作</h3>
+            <h3>{{ t('tutorial.intros.assistantTitle') }}</h3>
           </div>
-          <p>常用功能都支持当前笔记；需要处理更多内容时，可以切换到选中文本或多篇笔记。</p>
+          <p>{{ t('tutorial.intros.assistantDesc') }}</p>
         </div>
         <div class="wm-tutorial-grid">
           <article v-for="guide in assistantGuides" :key="guide.title" class="wm-panel">
@@ -178,9 +181,9 @@ const finish = async () => {
         <div class="wm-panel wm-tutorial-intro">
           <div class="wm-tutorial-heading">
             <ArrowPathIcon class="wm-panel-title-icon" />
-            <h3>双向同步的基本流程</h3>
+            <h3>{{ t('tutorial.intros.syncTitle') }}</h3>
           </div>
-          <p>同步页会分别显示 Obsidian 当前仓库和 WiseMindAI 本地数据。先选方向，再选内容与目标，最后执行。</p>
+          <p>{{ t('tutorial.intros.syncDesc') }}</p>
         </div>
         <div class="wm-tutorial-grid">
           <article v-for="step in syncSteps" :key="step.title" class="wm-panel">
@@ -197,9 +200,9 @@ const finish = async () => {
         <div class="wm-panel wm-tutorial-intro">
           <div class="wm-tutorial-heading">
             <Cog6ToothIcon class="wm-panel-title-icon" />
-            <h3>把重复操作固定下来</h3>
+            <h3>{{ t('tutorial.intros.settingsTitle') }}</h3>
           </div>
-          <p>设置页负责连接和默认行为；历史记录和同步方案负责减少重复选择。</p>
+          <p>{{ t('tutorial.intros.settingsDesc') }}</p>
         </div>
         <div class="wm-tutorial-grid">
           <article v-for="tip in settingsTips" :key="tip.title" class="wm-panel">
@@ -216,7 +219,7 @@ const finish = async () => {
     <footer class="wm-actions wm-tutorial-footer">
       <button class="wm-button is-primary" type="button" @click="finish">
         <CheckCircleIcon class="wm-icon" />
-        我知道了
+        {{ t('tutorial.finish') }}
       </button>
     </footer>
   </section>

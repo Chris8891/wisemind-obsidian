@@ -3,19 +3,34 @@ export type CardMarkdownItem = {
   tags?: string[];
 };
 
-export const formatCardsMarkdownBlock = (cards: CardMarkdownItem[]) => {
+export type CardsMarkdownLabels = {
+  title: string;
+  cardTitle: (index: number) => string;
+  tags: string;
+};
+
+const defaultLabels: CardsMarkdownLabels = {
+  title: 'WiseMindAI review cards',
+  cardTitle: index => `Card ${index}`,
+  tags: 'Tags',
+};
+
+export const formatCardsMarkdownBlock = (
+  cards: CardMarkdownItem[],
+  labels: CardsMarkdownLabels = defaultLabels,
+) => {
   const usableCards = cards.filter(card => card.content.trim());
   if (!usableCards.length) return '';
   return [
     '',
     '',
-    '## WiseMindAI 复习卡片',
+    `## ${labels.title}`,
     '',
     ...usableCards.map((card, index) => {
       const tags = card.tags?.length
-        ? `\n\n标签：${card.tags.map(tag => `#${String(tag).replace(/^#/, '')}`).join(' ')}`
+        ? `\n\n${labels.tags}: ${card.tags.map(tag => `#${String(tag).replace(/^#/, '')}`).join(' ')}`
         : '';
-      return `### 卡片 ${index + 1}\n\n${card.content.trim()}${tags}`;
+      return `### ${labels.cardTitle(index + 1)}\n\n${card.content.trim()}${tags}`;
     }),
     '',
   ].join('\n');

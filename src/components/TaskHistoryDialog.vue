@@ -1,5 +1,6 @@
 <script setup lang="ts">
   import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
+  import {useI18n} from 'vue-i18n';
   import {
     BookmarkSquareIcon,
     ChatBubbleOvalLeftEllipsisIcon,
@@ -17,8 +18,8 @@
     matchesTaskSearch,
     notifyTaskHistoryUpdated,
     type TaskHistoryEntry,
+    type TaskHistoryLabels,
     type TaskHistoryType,
-    taskTypeOptions,
     WISEMIND_TASK_HISTORY_UPDATED_EVENT,
   } from '../services/taskHistory';
 
@@ -37,6 +38,7 @@
   }>();
 
   const plugin = usePlugin();
+  const {t, locale} = useI18n();
   const search = ref('');
   const selectedType = ref<TaskHistoryType>(props.defaultType);
   const revision = ref(0);
@@ -59,7 +61,37 @@
 
   const taskKey = (task: TaskHistoryEntry) => `${task.type}:${task.id}`;
 
-  const tasks = computed(() => (revision.value, buildTaskHistory(plugin.settings)));
+  const taskHistoryLabels = computed<TaskHistoryLabels>(() => ({
+    all: t('taskHistoryService.all'),
+    summary: t('taskHistoryService.summary'),
+    cards: t('taskHistoryService.cards'),
+    chat: t('taskHistoryService.chat'),
+    sync: t('taskHistoryService.sync'),
+    summaryTask: t('taskHistoryService.summaryTask'),
+    cardsTask: t('taskHistoryService.cardsTask'),
+    chatTask: t('taskHistoryService.chatTask'),
+    syncTask: t('taskHistoryService.syncTask'),
+    summaryTitle: t('taskHistoryService.summaryTitle'),
+    cardsTitle: t('taskHistoryService.cardsTitle'),
+    cardCount: count => t('taskHistoryService.cardCount', {count}),
+    chatTitle: t('taskHistoryService.chatTitle'),
+    messageCount: count => t('taskHistoryService.messageCount', {count}),
+    syncDescription: item => t('taskHistoryService.syncDescription', item),
+  }));
+
+  const taskTypeOptions = computed(() => [
+    {value: 'all', label: t('taskHistoryService.all')},
+    {value: 'summary', label: t('taskHistoryService.summary')},
+    {value: 'cards', label: t('taskHistoryService.cards')},
+    {value: 'chat', label: t('taskHistoryService.chat')},
+    {value: 'sync', label: t('taskHistoryService.sync')},
+  ]);
+
+  const tasks = computed(
+    () => (
+      revision.value, locale.value, buildTaskHistory(plugin.settings, taskHistoryLabels.value)
+    ),
+  );
   const filteredTasks = computed(() =>
     tasks.value.filter(
       task =>
@@ -74,7 +106,7 @@
   );
 
   const formatTime = (time: number) =>
-    new Date(time).toLocaleString('zh-CN', {
+    new Date(time).toLocaleString(locale.value === 'en_US' ? 'en-US' : 'zh-CN', {
       year: 'numeric',
       month: 'numeric',
       day: 'numeric',
@@ -93,7 +125,9 @@
   const taskMeta = (task: TaskHistoryEntry) => {
     if (task.type === 'cards') return `${formatTime(task.createdAt)} · ${task.description}`;
     if (task.type === 'chat') {
-      return `${formatTime(task.createdAt)} · ${(task.raw as any).messages?.length || 0} 条消息`;
+      return `${formatTime(task.createdAt)} · ${t('taskHistory.messageCount', {
+        count: (task.raw as any).messages?.length || 0,
+      })}`;
     }
     return formatTime(task.createdAt);
   };
@@ -109,14 +143,13 @@
 
   const taskCollapsedContent = (task: TaskHistoryEntry) => {
     if (task.type === 'cards')
-      return `包含 ${(task.raw as any).cards?.length || 0} 张卡片，点击展开查看内容。`;
+      return t('taskHistory.cardCollapsed', {count: (task.raw as any).cards?.length || 0});
     if (task.type === 'chat') {
       const messages = (task.raw as any).messages || [];
       const last = messages[messages.length - 1];
-      return last?.content || '空会话';
+      return last?.content || t('taskHistory.emptyChat');
     }
-    if (task.type === 'sync')
-      return task.description;
+    if (task.type === 'sync') return task.description;
     return task.content.trim();
   };
 
@@ -125,7 +158,7 @@
     if (raw.syncItems?.length) return raw.syncItems;
     return (raw.itemTitles || []).map((title: string) => ({
       title,
-      target: raw.targetLabel || '目标',
+      target: raw.targetLabel || t('taskHistory.target'),
       status: 'created',
     }));
   };
@@ -138,15 +171,23 @@
     }
     if (task.type === 'chat') {
       return ((task.raw as any).messages || [])
-        .map((message: any) => `${message.role === 'user' ? '我' : 'WiseMindAI'}：${message.content}`)
+        .map(
+          (message: any) =>
+            `${message.role === 'user' ? t('taskHistory.me') : 'WiseMindAI'}: ${message.content}`,
+        )
         .join('\n\n');
     }
     if (task.type === 'sync') {
       const raw = task.raw as any;
       return [
-        `来源：${raw.sourceLabel || ''}`,
-        `目标：${raw.targetLabel || ''}`,
-        `结果：新建 ${raw.created} / 更新 ${raw.updated} / 跳过 ${raw.skipped} / 失败 ${raw.failed}`,
+        t('taskHistory.source', {value: raw.sourceLabel || ''}),
+        t('taskHistory.targetLine', {value: raw.targetLabel || ''}),
+        t('taskHistory.resultLine', {
+          created: raw.created,
+          updated: raw.updated,
+          skipped: raw.skipped,
+          failed: raw.failed,
+        }),
         '',
         ...((raw.itemTitles || []) as string[]).map((title, index) => `${index + 1}. ${title}`),
       ].join('\n');
@@ -173,7 +214,7 @@
   };
 
   const deleteTask = async (task: TaskHistoryEntry) => {
-    if (!window.confirm(`确定删除「${task.title}」这条历史记录吗？`)) return;
+    if (!window.confirm(t('taskHistory.deleteConfirm', {title: task.title}))) return;
     if (task.type === 'summary') {
       plugin.settings.assistantSummaryHistory = plugin.settings.assistantSummaryHistory.filter(
         item => item.id !== task.id,
@@ -195,7 +236,7 @@
     revision.value += 1;
     await plugin.saveSettings();
     notifyTaskHistoryUpdated();
-    new Notice('历史记录已删除');
+    new Notice(t('taskHistory.deleted'));
   };
 
   const refreshHistory = () => {
@@ -233,12 +274,16 @@
       class="wm-modal-box wm-history-dialog"
       role="dialog"
       aria-modal="true"
-      aria-label="历史记录"
+      :aria-label="t('taskHistory.ariaLabel')"
     >
       <header class="wm-history-dialog-header">
-        <h3 class="wm-dialog-title">最近任务</h3>
+        <h3 class="wm-dialog-title">{{ t('taskHistory.title') }}</h3>
         <div class="wm-history-dialog-actions">
-          <WmTooltip :content="allVisibleExpanded ? '一键收起' : '一键展开'">
+          <WmTooltip
+            :content="
+              allVisibleExpanded ? t('taskHistory.collapseAll') : t('taskHistory.expandAll')
+            "
+          >
             <button class="wm-icon-button" type="button" @click="toggleAll">
               <ChevronRightIcon class="wm-icon" :class="{'is-expanded': allVisibleExpanded}" />
             </button>
@@ -254,7 +299,11 @@
 
       <div class="wm-history-toolbar">
         <RekaSelect v-model="selectedType" :options="taskTypeOptions" />
-        <input v-model="search" class="wm-input" placeholder="搜索标题、来源或内容" />
+        <input
+          v-model="search"
+          class="wm-input"
+          :placeholder="t('taskHistory.searchPlaceholder')"
+        />
       </div>
 
       <div class="wm-history-list">
@@ -274,7 +323,10 @@
             </div>
             <div v-if="task.type === 'sync'" class="wm-sync-detail-list">
               <div
-                v-for="(item, index) in syncTaskRows(task).slice(0, expandedIds.has(taskKey(task)) ? undefined : 3)"
+                v-for="(item, index) in syncTaskRows(task).slice(
+                  0,
+                  expandedIds.has(taskKey(task)) ? undefined : 3,
+                )"
                 :key="`${item.title}:${index}`"
                 class="wm-sync-detail-row"
               >
@@ -299,7 +351,9 @@
               type="button"
               @click="toggleTask(task)"
             >
-              {{ expandedIds.has(taskKey(task)) ? '收起' : '展开' }}
+              {{
+                expandedIds.has(taskKey(task)) ? t('taskHistory.collapse') : t('taskHistory.expand')
+              }}
               <ChevronRightIcon
                 class="wm-icon"
                 :class="{'is-expanded': expandedIds.has(taskKey(task))}"
@@ -307,12 +361,12 @@
             </button>
           </div>
           <div class="wm-history-task-actions">
-            <WmTooltip content="打开">
+            <WmTooltip :content="t('taskHistory.open')">
               <button class="wm-icon-button" type="button" @click="emit('select', task)">
                 <CheckCircleIcon class="wm-icon" />
               </button>
             </WmTooltip>
-            <WmTooltip content="删除">
+            <WmTooltip :content="t('taskHistory.delete')">
               <button class="wm-icon-button" type="button" @click="deleteTask(task)">
                 <TrashIcon class="wm-icon" />
               </button>
@@ -320,7 +374,7 @@
           </div>
         </article>
 
-        <div v-if="!filteredTasks.length" class="wm-sync-empty">没有找到匹配的历史记录。</div>
+        <div v-if="!filteredTasks.length" class="wm-sync-empty">{{ t('taskHistory.empty') }}</div>
       </div>
     </section>
   </div>

@@ -1,6 +1,7 @@
 import {Modal, Notice, Setting} from 'obsidian';
 
 import {
+  defaultWiseMindDestinationLabels,
   loadWiseMindDestinationOptions,
   optionToDestination,
   targetLabel,
@@ -8,6 +9,7 @@ import {
   type WiseMindDestinationOption,
   type WiseMindDestinationTarget,
 } from './services/wisemindDestinations';
+import {translate} from './i18n';
 import type WiseMindObsidianPlugin from './main';
 
 export class ContextMenuDestinationModal extends Modal {
@@ -38,19 +40,25 @@ export class ContextMenuDestinationModal extends Modal {
     const {contentEl} = this;
     contentEl.empty();
     contentEl.addClass('wm-context-menu-destination-modal');
-    this.titleEl.setText(`发送到 ${targetLabel(this.target)}`);
+    const labels = this.destinationLabels();
+    const targetName = targetLabel(this.target, labels);
+    this.titleEl.setText(this.t('contextMenu.sendToTarget', {target: targetName}));
     contentEl.createEl('p', {
-      text: this.target === 'knowledge' ? '选择要发送到的知识库。' : '选择要发送到的文件夹。',
+      text: this.target === 'knowledge'
+        ? this.t('contextMenu.chooseKnowledgeDesc')
+        : this.t('contextMenu.chooseFolderDesc'),
       cls: 'wm-context-menu-destination-desc',
     });
 
-    this.options = await loadWiseMindDestinationOptions(this.plugin.api, this.target);
+    this.options = await loadWiseMindDestinationOptions(this.plugin.api, this.target, labels);
     const enabledOptions = this.options.filter(option => !option.disabled);
     const preferred = enabledOptions.find(option => option.value === this.selectedValue) || enabledOptions[0];
     this.selectedValue = preferred?.value || '';
 
     new Setting(contentEl)
-    .setName(this.target === 'knowledge' ? 'WiseMindAI 知识库' :`${targetLabel(this.target)}文件夹`)
+    .setName(this.target === 'knowledge'
+      ? this.t('contextMenu.knowledgeSetting')
+      : this.t('contextMenu.folderSetting', {target: targetName}))
       .addDropdown(dropdown => {
         this.options.forEach(option => dropdown.addOption(option.value, option.label));
         dropdown.setValue(this.selectedValue);
@@ -62,7 +70,7 @@ export class ContextMenuDestinationModal extends Modal {
 
     if (!enabledOptions.length) {
       contentEl.createEl('p', {
-        text: '没有知识库，请先在 WiseMindAI 中创建知识库后再发送。',
+        text: this.t('contextMenu.noKnowledgeDetailed'),
         cls: 'wm-context-menu-destination-desc',
       });
     }
@@ -70,20 +78,20 @@ export class ContextMenuDestinationModal extends Modal {
     new Setting(contentEl)
       .addButton(button =>
         button
-          .setButtonText('取消')
+          .setButtonText(this.t('contextMenu.cancel'))
           .onClick(() => {
             this.finish(null);
           }),
       )
       .addButton(button =>
         button
-          .setButtonText('发送')
+          .setButtonText(this.t('contextMenu.send'))
           .setCta()
           .setDisabled(!enabledOptions.length)
           .onClick(() => {
             const option = this.options.find(item => item.value === this.selectedValue && !item.disabled);
             if (!option) {
-              new Notice('请先选择目标');
+              new Notice(this.t('contextMenu.chooseTargetFirst'));
               return;
             }
             this.finish(optionToDestination(this.target, option));
@@ -95,6 +103,24 @@ export class ContextMenuDestinationModal extends Modal {
     this.resolved = true;
     this.resolve(destination);
     this.close();
+  }
+
+  private t(key: string, params?: Record<string, unknown>) {
+    return translate(this.plugin.settings.assistantDefaults.language, key, params);
+  }
+
+  private destinationLabels() {
+    return {
+      ...defaultWiseMindDestinationLabels,
+      notes: this.t('destinationOptions.notes'),
+      documents: this.t('destinationOptions.documents'),
+      knowledge: this.t('destinationOptions.knowledge'),
+      noKnowledge: this.t('destinationOptions.noKnowledge'),
+      createKnowledgeFirst: this.t('destinationOptions.createKnowledgeFirst'),
+      knowledgeMeta: this.t('destinationOptions.knowledgeMeta'),
+      rootFolder: this.t('destinationOptions.rootFolder'),
+      folder: this.t('destinationOptions.folder'),
+    };
   }
 }
 

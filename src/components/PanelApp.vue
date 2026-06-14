@@ -50,7 +50,7 @@
 
   type PageKey = 'home' | 'summary' | 'cards' | 'chat' | 'sync' | 'search' | 'settings' | 'tutorial';
 
-  const activePage = ref<PageKey>(props.plugin.settings.hasSeenTutorial ? 'home' : 'tutorial');
+  const activePage = ref<PageKey>('home');
   const historyDialogOpen = ref(false);
   const connectionDialogOpen = ref(false);
   const historyDefaultType = ref<TaskHistoryType>('all');
@@ -58,6 +58,8 @@
     null,
   );
   const summaryResetToken = ref(0);
+  const searchDraft = ref({keyword: '', token: 0});
+  const chatDraft = ref({message: '', token: 0, autoSend: false, newSession: false});
   const primaryNavItems = [
     {key: 'home' as const, labelKey: 'nav.home', icon: HomeIcon},
     {key: 'summary' as const, labelKey: 'nav.summary', icon: DocumentTextIcon},
@@ -87,10 +89,15 @@
     };
   };
 
-  const openChatWithMessage = (message: string) => {
+  const openChatWithMessage = (message: string, autoSend = false, newSession = false) => {
     activePage.value = 'chat';
     selectedHistory.value = null;
-    window.dispatchEvent(new CustomEvent('wisemindai:chat-draft', {detail: {message}}));
+    chatDraft.value = {message, token: Date.now(), autoSend, newSession};
+  };
+
+  const clearChatDraft = (token: number) => {
+    if (chatDraft.value.token !== token) return;
+    chatDraft.value = {message: '', token: 0, autoSend: false, newSession: false};
   };
 
   const openCardsWithSummary = async (payload: {
@@ -110,6 +117,20 @@
         content: payload.markdown,
       },
     }));
+  };
+
+  const summarizeCurrentNote = async () => {
+    activePage.value = 'summary';
+    selectedHistory.value = null;
+    summaryResetToken.value = Date.now();
+    await nextTick();
+    void props.plugin.runAssistantAction('summary');
+  };
+
+  const searchCurrentNote = async (keyword: string) => {
+    activePage.value = 'search';
+    selectedHistory.value = null;
+    searchDraft.value = {keyword, token: Date.now()};
   };
 
   const openConnectionDialog = () => {
@@ -209,6 +230,9 @@
         <TabsContent value="home" class="wm-tab-content">
           <AssistantHome
             @open="openPage($event)"
+            @open-chat="openChatWithMessage"
+            @summarize-current="summarizeCurrentNote"
+            @search-current="searchCurrentNote"
             @open-history="openHistoryDialog"
             @open-task="openHistoryTask"
             @open-settings="openSettingsPage"
@@ -236,6 +260,11 @@
           <ChatPage
             :history-item-id="selectedHistory?.type === 'chat' ? selectedHistory.id : ''"
             :history-token="selectedHistory?.type === 'chat' ? selectedHistory.token : 0"
+            :draft-message="chatDraft.message"
+            :draft-token="chatDraft.token"
+            :draft-auto-send="chatDraft.autoSend"
+            :draft-new-session="chatDraft.newSession"
+            @draft-consumed="clearChatDraft"
           />
         </TabsContent>
         <TabsContent value="sync" class="wm-tab-content">
@@ -246,7 +275,12 @@
           />
         </TabsContent>
         <TabsContent value="search" class="wm-tab-content">
-          <SearchPage @open-chat="openChatWithMessage" @open-sync="activePage = 'sync'" />
+          <SearchPage
+            :draft-keyword="searchDraft.keyword"
+            :draft-token="searchDraft.token"
+            @open-chat="openChatWithMessage"
+            @open-sync="activePage = 'sync'"
+          />
         </TabsContent>
         <TabsContent value="settings" class="wm-tab-content">
           <SettingsPage />

@@ -40,6 +40,16 @@ export type WiseMindAssistantDefaults = {
   defaultCardFolderName: string;
 };
 
+export type AssistantOpenChatSession = {
+  id: string;
+  title?: string;
+  contextPath?: string;
+  contextPaths?: string[];
+  createdAt?: number;
+  draftInput?: string;
+  updatedAt: number;
+};
+
 export type SyncPlanDirection = 'to-wisemind' | 'to-obsidian';
 
 export type SyncPlan = {
@@ -88,6 +98,8 @@ export type WiseMindImportSettings = {
   assistantSummaryHistory: AssistantSummaryHistoryItem[];
   assistantCardHistory: AssistantCardHistoryItem[];
   assistantChatSessions: AssistantChatSession[];
+  assistantOpenChatSessionIds: string[];
+  assistantOpenChatSessions: AssistantOpenChatSession[];
   syncPlans: SyncPlan[];
   syncHistory: SyncHistoryItem[];
   defaultSyncPlanId: string;
@@ -213,4 +225,16 @@ export type WiseMindSnapshot = {
   documentFolders: WiseMindFolder[];
   knowledgeBases: any[];
   knowledgeDocuments: any[];
+};
+
+export type WiseMindWorkspaceState = {
+  activeWorkspaceId: string | null;
+  defaultWorkspaceId: string | null;
+  workspaces: Array<{
+    id: string;
+    name: string;
+    folderPath?: string;
+    isDefault?: boolean | number;
+    status?: string;
+  }>;
 };

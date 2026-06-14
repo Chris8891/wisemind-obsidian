@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { CheckIcon, ChevronDownIcon } from '@heroicons/vue/24/outline';
 import {
   SelectContent,
@@ -26,6 +27,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: string];
 }>();
 
+const { t } = useI18n();
 const open = ref(false);
 const query = ref('');
 const emptyValue = '__wisemind_empty_select_value__';
@@ -58,9 +60,9 @@ watch(open, value => {
     v-model:open="open"
     @update:model-value="value => emit('update:modelValue', fromSelectValue(String(value)))"
   >
-    <SelectTrigger class="wm-select-trigger" :aria-label="placeholder || '选择'">
-      <SelectValue :placeholder="placeholder || '请选择'">
-        {{ selectedLabel || placeholder || '请选择' }}
+    <SelectTrigger class="wm-select-trigger" :aria-label="placeholder || t('shared.select')">
+      <SelectValue :placeholder="placeholder || t('shared.pleaseSelect')">
+        {{ selectedLabel || placeholder || t('shared.pleaseSelect') }}
       </SelectValue>
       <ChevronDownIcon class="wm-icon" />
     </SelectTrigger>
@@ -86,14 +88,14 @@ watch(open, value => {
             </SelectItemIndicator>
           </SelectItem>
           <div v-if="!filteredOptions.length" class="wm-search-select-empty">
-            {{ emptyText || '没有匹配结果' }}
+            {{ emptyText || t('shared.noMatches') }}
           </div>
         </SelectViewport>
         <div class="wm-search-select-footer">
           <input
             v-model="query"
             class="wm-input"
-            :placeholder="searchPlaceholder || '搜索文件夹'"
+            :placeholder="searchPlaceholder || t('shared.searchFolder')"
             @click.stop
             @pointerdown.stop
             @keydown.stop

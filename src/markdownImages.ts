@@ -5,7 +5,7 @@ import { hashText, sanitizeFileName } from './text';
 
 const imageExtensionPattern = /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i;
 const externalUrlPattern = /^(?:https?:|data:|app:|obsidian:|wise:)/i;
-const wiseMindAssetFolderName = 'WiseMindAI 附件';
+const wiseMindAssetFolderName = 'WiseMindAI Attachments';
 const wiseMindSpaceFlag = '_WISEMINDSPACE_';
 
 export const prepareWiseMindImagesForObsidian = async (

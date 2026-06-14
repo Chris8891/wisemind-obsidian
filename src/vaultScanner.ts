@@ -62,7 +62,7 @@ export const titleFromMarkdown = (markdown: string, fallback: string) => {
   const frontmatterTitle = typeof frontmatter.title === 'string' ? frontmatter.title.trim() : '';
   if (frontmatterTitle) return frontmatterTitle;
   const heading = body.match(/^#\s+(.+)$/m)?.[1]?.trim();
-  return heading || fallback || '未命名笔记';
+  return heading || fallback || 'Untitled note';
 };
 
 export const stripFrontmatter = (markdown: string) => parseFrontmatter(markdown).body;

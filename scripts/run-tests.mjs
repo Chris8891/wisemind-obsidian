@@ -1,7 +1,7 @@
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readdir,readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -59,12 +59,22 @@ test('language setting defaults to Obsidian and only exposes Chinese and English
   assert.match(i18nSource, /value: 'en_US'/);
 });
 
-test('assistant home, summary, and cards pages do not hard-code Chinese UI text', async () => {
-  const files = [
-    'src/components/pages/AssistantHome.vue',
-    'src/components/pages/SummaryPage.vue',
-    'src/components/pages/CardsPage.vue',
-  ];
+const sourceFiles = async (dir) => {
+  const entries = await readdir(dir, {withFileTypes: true});
+  const files = [];
+  for (const entry of entries) {
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      files.push(...await sourceFiles(path));
+      continue;
+    }
+    if (/\.(ts|vue)$/.test(entry.name)) files.push(path);
+  }
+  return files;
+};
+
+test('Obsidian plugin UI and message source uses i18n for Chinese text', async () => {
+  const files = (await sourceFiles('src')).filter(file => file !== 'src/i18n/zh_CN.ts');
 
   for (const file of files) {
     const source = await readFile(file, 'utf8');
@@ -85,8 +95,14 @@ test('build output contains Obsidian plugin files', () => {
   assert.ok(existsSync('dist/manifest.json'));
 });
 
+test('Obsidian plugin entry is self-contained and does not require local build chunks', async () => {
+  const main = await readFile('dist/main.js', 'utf8');
+
+  assert.doesNotMatch(main, /require\(["']\.\/[^"']+["']\)/);
+});
+
 test('Tailwind CSS output keeps prefixed utilities for Obsidian views', async () => {
-  const source = await readFile('src/styles.css', 'utf8');
+  const source = await readFile('src/styles.scss', 'utf8');
   const builtCss = await readFile('dist/styles.css', 'utf8');
 
   assert.match(source, /@source "\.\/\*\*\/\*\.vue";/);
@@ -121,7 +137,7 @@ test('note mention search returns title and folder matches with title-first disp
   assert.equal(result[0].title, 'WiseMindAI 核心功能总表');
   assert.equal(result[0].folderPath, 'WiseMindAI/产品文档');
   assert.equal(result[0].insertText, '@WiseMindAI/产品文档/WiseMindAI_核心功能总表.md ');
-  assert.equal(result[0].matchReason, '标题匹配');
+  assert.equal(result[0].matchReason, 'Title match');
 });
 
 test('note mention search can match aliases and tags', () => {
@@ -173,14 +189,14 @@ test('sync preview summarizes selected sources and targets before execution', ()
   const preview = syncPreviewHelpers.buildSyncPreview({
     direction: 'to-wisemind',
     sourceCount: 3,
-    targetLabels: ['知识库：Obsidian 导入', '笔记：根目录'],
+    targetLabels: ['Knowledge base: Obsidian import', 'Note: Root'],
     overwriteExisting: true,
   });
 
-  assert.equal(preview.title, '准备同步 3 篇 Obsidian 笔记');
+  assert.equal(preview.title, 'Ready to sync 3 Obsidian notes');
   assert.equal(preview.riskLevel, 'warning');
   assert.equal(preview.rows.length, 2);
-  assert.match(preview.warningText, /更新同来源内容/);
+  assert.match(preview.warningText, /same source/);
 });
 
 test('editor rewrite formatting keeps original text and appends AI result', () => {
@@ -191,7 +207,7 @@ test('editor rewrite formatting keeps original text and appends AI result', () =
   );
 
   assert.match(formatted, /原始段落/);
-  assert.match(formatted, /WiseMindAI 润色/);
+  assert.match(formatted, /WiseMindAI Polish/);
   assert.match(formatted, /> 润色后的段落\n> 第二行/);
 });
 
@@ -205,15 +221,15 @@ test('chat insert formatter supports Markdown, heading, quote, and callout forma
   assert.equal(chatInsertHelpers.formatChatMessageForInsert('回答', 'markdown'), '\n\n回答\n');
   assert.match(
     chatInsertHelpers.formatChatMessageForInsert('回答', 'heading'),
-    /## WiseMindAI 对话\n\n回答/,
+    /## WiseMindAI chat\n\n回答/,
   );
   assert.match(
     chatInsertHelpers.formatChatMessageForInsert('第一行\n第二行', 'quote'),
-    /> \[!quote\] WiseMindAI 对话\n> 第一行\n> 第二行/,
+    /> \[!quote\] WiseMindAI chat\n> 第一行\n> 第二行/,
   );
   assert.match(
     chatInsertHelpers.formatChatMessageForInsert('回答', 'callout'),
-    /> \[!note\] WiseMindAI 对话\n> 回答/,
+    /> \[!note\] WiseMindAI chat\n> 回答/,
   );
 });
 
@@ -223,8 +239,8 @@ test('cards markdown formatter creates a review section with normalized tags', (
     {content: '第二张卡片', tags: []},
   ]);
 
-  assert.match(markdown, /## WiseMindAI 复习卡片/);
-  assert.match(markdown, /### 卡片 1\n\n第一张卡片/);
-  assert.match(markdown, /标签：#概念 #复习/);
-  assert.match(markdown, /### 卡片 2\n\n第二张卡片/);
+  assert.match(markdown, /## WiseMindAI review cards/);
+  assert.match(markdown, /### Card 1\n\n第一张卡片/);
+  assert.match(markdown, /Tags: #概念 #复习/);
+  assert.match(markdown, /### Card 2\n\n第二张卡片/);
 });

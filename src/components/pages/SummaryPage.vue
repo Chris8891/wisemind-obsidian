@@ -35,7 +35,11 @@
 
   import {usePlugin} from '../../composables/usePlugin';
   import {useWiseMindConnectionGuard} from '../../composables/useWiseMindConnectionGuard';
-  import {createAssistantPlan, type SourceMode, summarize} from '../../services/assistantService';
+  import {
+    createAssistantPlan,
+    type SourceMode,
+    summarizeStream,
+  } from '../../services/assistantService';
   import {
     insertTextToActiveNote,
     saveSummaryAsNewNote,
@@ -45,11 +49,11 @@
   import {notifyTaskHistoryUpdated} from '../../services/taskHistory';
   import type {AssistantSummaryDraft, ObsidianSourceItem} from '../../types';
   import AssistantSourceNotes from '../AssistantSourceNotes.vue';
-  import MarkdownView from '../MarkdownView.vue';
   import NotePickerDialog from '../NotePickerDialog.vue';
   import RekaSearchSelect from '../RekaSearchSelect.vue';
   import RekaSelect from '../RekaSelect.vue';
   import SourceSelector from '../SourceSelector.vue';
+  import StreamingMarkdownView from '../StreamingMarkdownView.vue';
   import WiseMindConnectionDialog from '../WiseMindConnectionDialog.vue';
   import WmTooltip from '../WmTooltip.vue';
 
@@ -60,7 +64,7 @@
   }>();
   const emit = defineEmits<{
     openHistory: [];
-    openChat: [message: string];
+    openChat: [message: string, autoSend?: boolean, newSession?: boolean];
     openCards: [payload: {title: string; sourcePath?: string; markdown: string}];
     openSync: [];
   }>();
@@ -94,6 +98,7 @@
   const activeTaskId = ref('');
   const editingSummary = ref(false);
   const editableSummaryMarkdown = ref('');
+  const streamingSummary = ref(false);
   const promptOptions = ref<Array<{key: string; name: string; order?: number; icon?: string}>>([]);
   const selectedPromptKey = ref('');
   const promptListLoading = ref(false);
@@ -115,8 +120,11 @@
     return plugin.app.workspace.getActiveFile()?.path || t('summary.noOpenNote');
   });
   const currentNotePath = computed(() => plugin.app.workspace.getActiveFile()?.path || '');
+  const currentSourceUnavailable = computed(() => sourceMode.value === 'current' && !currentNotePath.value);
+  const canGenerateSummary = computed(() => !loading.value && !currentSourceUnavailable.value);
   const summaryPromptOptions = computed(() => {
-    return promptOptions.value.length ? promptOptions.value : [defaultPromptOption];
+    const customOptions = promptOptions.value.filter(option => option.key !== defaultPromptOption.key);
+    return [defaultPromptOption, ...customOptions];
   });
 
   const removeSelectedNote = (path: string) => {
@@ -128,12 +136,12 @@
     try {
       const result = await plugin.api.listAssistantPrompts('documentSummary');
       promptOptions.value = Array.isArray(result.options) ? result.options : [];
-      const nextDefault = result.defaultPromptKey || promptOptions.value[0]?.key || defaultPromptOption.key;
+      const nextDefault = result.defaultPromptKey || defaultPromptOption.key;
       if (!selectedPromptKey.value || !summaryPromptOptions.value.some(item => item.key === selectedPromptKey.value)) {
         selectedPromptKey.value = nextDefault;
       }
     } catch {
-      promptOptions.value = [defaultPromptOption];
+      promptOptions.value = [];
       selectedPromptKey.value ||= defaultPromptOption.key;
     } finally {
       promptListLoading.value = false;
@@ -141,7 +149,7 @@
   };
 
   const openCreateSummaryPrompt = async () => {
-    selectedPromptKey.value = promptOptions.value[0]?.key || defaultPromptOption.key;
+    selectedPromptKey.value = summaryPromptOptions.value[0]?.key || defaultPromptOption.key;
     await plugin.api.openSource({
       type: 'setting',
       settingType: 'prompt',
@@ -174,9 +182,35 @@
       status: 'running',
     });
     loading.value = true;
+    streamingSummary.value = true;
     error.value = '';
     try {
-      draft.value = await summarize(plugin, plan, selectedPromptKey.value, controller.value.signal);
+      draft.value = {
+        title: plan.sourceTitle
+          ? t('summary.generatedTitle', {title: plan.sourceTitle})
+          : t('summary.title'),
+        markdown: '',
+        tags: [],
+        sourceTitle: plan.sourceTitle,
+        sourcePath: plan.sourcePath,
+        sourceKind: plan.sourceKind,
+        sourcePaths: plan.sourcePaths,
+      };
+      draft.value = await summarizeStream(
+        plugin,
+        plan,
+        selectedPromptKey.value,
+        {
+          onDelta: markdown => {
+            if (!draft.value) return;
+            draft.value = {
+              ...draft.value,
+              markdown,
+            };
+          },
+        },
+        controller.value.signal,
+      );
       const historyId = `summary-${Date.now()}`;
       currentSummaryHistoryId.value = historyId;
       editingSummary.value = false;
@@ -218,6 +252,7 @@
       }
     } finally {
       loading.value = false;
+      streamingSummary.value = false;
       controller.value = null;
     }
   };
@@ -358,6 +393,8 @@
     emit(
       'openChat',
       t('summary.continueChatPrompt', {markdown: draft.value.markdown}),
+      false,
+      true,
     );
   };
 
@@ -381,6 +418,7 @@
     }
     controller.value = null;
     loading.value = false;
+    streamingSummary.value = false;
   };
 
   const openHistoryItem = (id?: string) => {
@@ -409,6 +447,7 @@
     };
     error.value = '';
     loading.value = false;
+    streamingSummary.value = false;
     controller.value?.abort();
     controller.value = null;
   };
@@ -420,6 +459,7 @@
     selectedNotes.value = [];
     pickerOpen.value = false;
     loading.value = false;
+    streamingSummary.value = false;
     error.value = '';
     draft.value = null;
     currentSummaryHistoryId.value = '';
@@ -433,12 +473,41 @@
     if (plan?.kind !== 'summary') return;
     void (async () => {
       resetSummaryState();
+      controller.value = new AbortController();
       loading.value = true;
+      streamingSummary.value = true;
       try {
-        draft.value = await summarize(plugin, plan, selectedPromptKey.value);
+        draft.value = {
+          title: plan.sourceTitle
+            ? t('summary.generatedTitle', {title: plan.sourceTitle})
+            : t('summary.title'),
+          markdown: '',
+          tags: [],
+          sourceTitle: plan.sourceTitle,
+          sourcePath: plan.sourcePath,
+          sourceKind: plan.sourceKind,
+          sourcePaths: plan.sourcePaths,
+        };
+        draft.value = await summarizeStream(
+          plugin,
+          plan,
+          selectedPromptKey.value,
+          {
+            onDelta: markdown => {
+              if (!draft.value) return;
+              draft.value = {
+                ...draft.value,
+                markdown,
+              };
+            },
+          },
+          controller.value.signal,
+        );
         currentSummaryHistoryId.value = '';
       } finally {
         loading.value = false;
+        streamingSummary.value = false;
+        controller.value = null;
       }
     })();
   };
@@ -513,6 +582,7 @@
         :selected-notes="selectedNotes"
         @remove="removeSelectedNote"
       />
+      <p v-if="currentSourceUnavailable" class="wm-source-warning">{{ t('summary.noOpenNote') }}</p>
     </section>
 
     <div v-if="error" class="wm-alert is-error">{{ error }}</div>
@@ -527,8 +597,34 @@
         class="wm-textarea wm-summary-edit-content"
         :placeholder="t('summary.editPlaceholder')"
       ></textarea>
-      <MarkdownView v-else :markdown="draft.markdown" :source-path="draft.sourcePath" />
-      <footer class="wm-summary-action-groups">
+      <StreamingMarkdownView
+        v-else
+        :content="draft.markdown"
+        :streaming="streamingSummary"
+      />
+      <footer class="wm-summary-primary-actions">
+        <button class="wm-button is-primary" type="button" @click="copyMarkdown">
+          <ClipboardDocumentIcon class="wm-icon" /> {{ t('summary.copy') }}
+        </button>
+        <button
+          v-if="sourceMode !== 'multi'"
+          class="wm-button"
+          type="button"
+          @click="
+            insertTextToActiveNote(
+              plugin,
+              summaryMarkdownBlock(draft, t('obsidianMessages.summaryHeading')),
+              t('summary.insertedToNote'),
+            )
+          "
+        >
+          <PencilSquareIcon class="wm-icon" /> {{ t('summary.insertCurrentNote') }}
+        </button>
+        <button class="wm-button" type="button" @click="continueChat">
+          <ChatBubbleOvalLeftEllipsisIcon class="wm-icon" /> {{ t('summary.continueChat') }}
+        </button>
+      </footer>
+      <footer class="wm-summary-action-groups is-compact">
         <section class="wm-summary-action-group">
           <h4><ClipboardDocumentIcon class="wm-icon" /> {{ t('summary.refineSection') }}</h4>
           <div class="wm-summary-action-row">
@@ -546,18 +642,12 @@
             <button v-else class="wm-button" type="button" @click="startEditSummary">
               <PencilSquareIcon class="wm-icon" /> {{ t('summary.edit') }}
             </button>
-            <button class="wm-button" type="button" @click="copyMarkdown">
-              <ClipboardDocumentIcon class="wm-icon" /> {{ t('summary.copy') }}
-            </button>
           </div>
         </section>
 
         <section class="wm-summary-action-group">
           <h4><ChatBubbleOvalLeftEllipsisIcon class="wm-icon" /> {{ t('summary.deepenSection') }}</h4>
           <div class="wm-summary-action-row">
-            <button class="wm-button" type="button" @click="continueChat">
-              <ChatBubbleOvalLeftEllipsisIcon class="wm-icon" /> {{ t('summary.continueChat') }}
-            </button>
             <button class="wm-button" type="button" @click="generateCardsFromSummary">
               <BookmarkSquareIcon class="wm-icon" /> {{ t('summary.generateCards') }}
             </button>
@@ -570,16 +660,6 @@
         <section class="wm-summary-action-group">
           <h4><DocumentPlusIcon class="wm-icon" /> {{ t('summary.saveSection') }}</h4>
           <div class="wm-summary-action-row">
-            <button
-              v-if="sourceMode !== 'multi'"
-              class="wm-button"
-              type="button"
-              @click="
-                insertTextToActiveNote(plugin, summaryMarkdownBlock(draft), t('summary.insertedToNote'))
-              "
-            >
-              <PencilSquareIcon class="wm-icon" /> {{ t('summary.insertCurrentNote') }}
-            </button>
             <button class="wm-button" type="button" @click="openObsidianSaveDialog">
               <DocumentPlusIcon class="wm-icon" /> {{ t('summary.saveNewNote') }}
             </button>
@@ -609,7 +689,7 @@
       >
         <SelectTrigger
           class="wm-select-trigger wm-summary-prompt-select"
-          :disabled="loading || promptListLoading"
+          :disabled="loading || promptListLoading || currentSourceUnavailable"
           :aria-label="t('summary.promptAriaLabel')"
         >
           <SelectValue :placeholder="t('summary.promptPlaceholder')" />
@@ -639,7 +719,7 @@
       <button
         class="wm-button is-primary"
         type="button"
-        :disabled="loading"
+        :disabled="!canGenerateSummary"
         @click="generate"
       >
         <span v-if="loading" class="wm-loading-spinner"></span>

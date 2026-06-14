@@ -13,7 +13,7 @@ export const DEFAULT_SETTINGS: WiseMindImportSettings = {
   contextMenuDefaults: {
     noteFolderPath: '',
     documentFolderPath: '',
-    knowledgeBaseName: 'Obsidian 导入',
+    knowledgeBaseName: 'Obsidian import',
   },
   contextMenuRecents: {
     notes: [],
@@ -26,17 +26,19 @@ export const DEFAULT_SETTINGS: WiseMindImportSettings = {
     cardCount: 5,
     cardDifficulty: 'standard',
     cardStructure: 'concept',
-    defaultCardDeckName: 'Obsidian 卡片',
-    defaultCardFolderName: '默认',
+    defaultCardDeckName: 'Obsidian cards',
+    defaultCardFolderName: 'Default',
   },
   assistantSummaryHistory: [],
   assistantCardHistory: [],
   assistantChatSessions: [],
+  assistantOpenChatSessionIds: [],
+  assistantOpenChatSessions: [],
   syncPlans: [],
   syncHistory: [],
   defaultSyncPlanId: '',
   hasSeenTutorial: false,
-  defaultKnowledgeBaseName: 'Obsidian 导入',
+  defaultKnowledgeBaseName: 'Obsidian import',
   defaultObsidianRootFolder: 'WiseMindAI',
   duplicatePolicy: 'update',
   maxFileSizeKb: 1024,
@@ -59,6 +61,12 @@ export const normalizeWiseMindSettings = (
     : [];
   settings.assistantChatSessions = Array.isArray(settings.assistantChatSessions)
     ? settings.assistantChatSessions
+    : [];
+  settings.assistantOpenChatSessionIds = Array.isArray(settings.assistantOpenChatSessionIds)
+    ? settings.assistantOpenChatSessionIds.filter(Boolean)
+    : [];
+  settings.assistantOpenChatSessions = Array.isArray(settings.assistantOpenChatSessions)
+    ? settings.assistantOpenChatSessions.filter(item => item?.id)
     : [];
   settings.contextMenuRecents = {
     notes: settings.contextMenuRecents?.notes || [],

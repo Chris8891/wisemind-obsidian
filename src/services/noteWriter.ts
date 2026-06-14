@@ -1,5 +1,6 @@
 import { Notice } from 'obsidian';
 
+import { translate } from '../i18n';
 import type WiseMindObsidianPlugin from '../main';
 import { ensureFolder, nextAvailablePath } from '../obsidianWriter';
 import { sanitizeFileName } from '../text';
@@ -14,7 +15,7 @@ export const insertTextToActiveNote = async (plugin: WiseMindObsidianPlugin, tex
   }
   const file = plugin.app.workspace.getActiveFile();
   if (!file || (file as any).extension !== 'md') {
-    new Notice('当前没有打开的 Markdown 笔记');
+    new Notice(translate(plugin.settings.assistantDefaults.language, 'obsidianMessages.noMarkdownNote'));
     return;
   }
   const content = await plugin.app.vault.read(file as any);
@@ -22,7 +23,8 @@ export const insertTextToActiveNote = async (plugin: WiseMindObsidianPlugin, tex
   new Notice(success);
 };
 
-export const summaryMarkdownBlock = (draft: AssistantSummaryDraft) => `\n\n## WiseMindAI 总结\n\n${draft.markdown}\n`;
+export const summaryMarkdownBlock = (draft: AssistantSummaryDraft, heading = 'WiseMindAI summary') =>
+  `\n\n## ${heading}\n\n${draft.markdown}\n`;
 
 export const saveSummaryAsNewNote = async (
   plugin: WiseMindObsidianPlugin,
@@ -31,12 +33,13 @@ export const saveSummaryAsNewNote = async (
 ) => {
   const folder = (options.folderPath ?? plugin.settings.defaultObsidianRootFolder ?? 'WiseMindAI')
     .replace(/^\/+|\/+$/g, '');
-  const title = options.title?.trim() || draft.title || 'WiseMindAI 总结';
+  const fallbackTitle = translate(plugin.settings.assistantDefaults.language, 'obsidianMessages.summaryFallbackTitle');
+  const title = options.title?.trim() || draft.title || fallbackTitle;
   const markdown = options.markdown?.trim() || draft.markdown;
   if (folder) await ensureFolder(plugin.app, folder);
-  const filename = sanitizeFileName(title, 'WiseMindAI 总结');
+  const filename = sanitizeFileName(title, fallbackTitle);
   const path = await nextAvailablePath(plugin.app, folder ? `${folder}/${filename}.md` : `${filename}.md`);
   await plugin.app.vault.create(path, `# ${title}\n\n${markdown}\n`);
-  new Notice(`总结已保存为新笔记：${path}`);
+  new Notice(translate(plugin.settings.assistantDefaults.language, 'obsidianMessages.summarySaved', {path}));
   return path;
 };

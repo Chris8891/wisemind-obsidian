@@ -18,6 +18,22 @@ export type NoteMentionCandidate = {
   modifiedAt?: number;
 };
 
+export type NoteMentionSearchLabels = {
+  title: string;
+  alias: string;
+  path: string;
+  tag: string;
+  folder: string;
+};
+
+const defaultLabels: NoteMentionSearchLabels = {
+  title: 'Title match',
+  alias: 'Alias match',
+  path: 'Path match',
+  tag: 'Tag match',
+  folder: 'Folder match',
+};
+
 const lower = (value: unknown) => String(value || '').toLowerCase();
 
 const titleFromPath = (path: string) => path.replace(/\.md$/i, '').split('/').pop() || path;
@@ -36,6 +52,7 @@ export const searchNoteMentions = (
   notes: NoteMentionSearchItem[],
   query: string,
   limit = 0,
+  labels: NoteMentionSearchLabels = defaultLabels,
 ): NoteMentionCandidate[] => {
   const keyword = lower(query).trim();
   const safeLimit = Math.max(0, Math.floor(Number(limit || 0)));
@@ -45,11 +62,11 @@ export const searchNoteMentions = (
       const title = note.title || titleFromPath(note.path);
       const aliases = Array.isArray(note.aliases) ? note.aliases : [];
       const candidates = [
-        {reason: '标题匹配', score: scoreText(title, keyword, 100)},
-        {reason: '别名匹配', score: scoreText(aliases.join(' '), keyword, 90)},
-        {reason: '路径匹配', score: scoreText(note.path, keyword, 70)},
-        {reason: '标签匹配', score: scoreText((note.tags || []).join(' '), keyword, 60)},
-        {reason: '文件夹匹配', score: scoreText(note.folderPath, keyword, 50)},
+        {reason: labels.title, score: scoreText(title, keyword, 100)},
+        {reason: labels.alias, score: scoreText(aliases.join(' '), keyword, 90)},
+        {reason: labels.path, score: scoreText(note.path, keyword, 70)},
+        {reason: labels.tag, score: scoreText((note.tags || []).join(' '), keyword, 60)},
+        {reason: labels.folder, score: scoreText(note.folderPath, keyword, 50)},
       ].sort((a, b) => b.score - a.score);
       const best = candidates[0] || {reason: '', score: 0};
 

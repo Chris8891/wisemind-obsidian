@@ -24,7 +24,7 @@
   import {useWiseMindConnectionGuard} from '../../composables/useWiseMindConnectionGuard';
   import {
     createAssistantPlan,
-    generateCards,
+    generateCardsStream,
     type SourceMode,
   } from '../../services/assistantService';
   import {formatCardsMarkdownBlock} from '../../services/cardsMarkdown';
@@ -35,6 +35,7 @@
   import NotePickerDialog from '../NotePickerDialog.vue';
   import RekaSelect from '../RekaSelect.vue';
   import SourceSelector from '../SourceSelector.vue';
+  import StreamingMarkdownView from '../StreamingMarkdownView.vue';
   import WiseMindConnectionDialog from '../WiseMindConnectionDialog.vue';
   import WmTooltip from '../WmTooltip.vue';
 
@@ -58,6 +59,8 @@
   const controller = ref<AbortController | null>(null);
   const editingIndex = ref<number | null>(null);
   const activeTaskId = ref('');
+  const streamingCardsRaw = ref('');
+  const cancelNoticeShown = ref(false);
 
   const cardCount = ref(plugin.settings.assistantDefaults.cardCount);
   const cardDifficulty = ref(plugin.settings.assistantDefaults.cardDifficulty);
@@ -155,10 +158,38 @@
     });
     await syncCardSettings();
     loading.value = true;
+    cancelNoticeShown.value = false;
     error.value = '';
     editingIndex.value = null;
+    streamingCardsRaw.value = '';
+    cards.value = [];
     try {
-      cards.value = await generateCards(plugin, plan, controller.value.signal);
+      const generatedCards = await generateCardsStream(
+        plugin,
+        plan,
+        {
+          onDelta: raw => {
+            streamingCardsRaw.value = raw;
+          },
+          onCards: partialCards => {
+            cards.value = partialCards;
+            upsertPluginTask({
+              id: taskId,
+              title: t('cards.taskGenerating'),
+              status: 'running',
+              total: Number(cardCount.value || 0),
+              completed: partialCards.length,
+            });
+          },
+        },
+        controller.value.signal,
+      );
+      if (generatedCards.length) {
+        cards.value = generatedCards;
+      }
+      if (!cards.value.length) {
+        throw new Error(t('cards.taskFailed'));
+      }
       plugin.settings.assistantCardHistory.unshift({
         id: `cards-${Date.now()}`,
         createdAt: Date.now(),
@@ -178,6 +209,7 @@
         total: cards.value.length,
         completed: cards.value.length,
       });
+      new Notice(t('cards.taskGenerated'));
     } catch (err: any) {
       if (!controller.value?.signal.aborted) {
         error.value = err?.message || t('cards.taskFailed');
@@ -187,12 +219,17 @@
           status: 'failed',
           message: error.value,
         });
+        new Notice(error.value);
       } else {
         upsertPluginTask({
           id: taskId,
           title: t('cards.taskCancelled'),
           status: 'cancelled',
         });
+        if (!cancelNoticeShown.value) {
+          new Notice(t('cards.taskCancelled'));
+          cancelNoticeShown.value = true;
+        }
       }
     } finally {
       loading.value = false;
@@ -211,6 +248,11 @@
     }
     controller.value = null;
     loading.value = false;
+    streamingCardsRaw.value = '';
+    if (!cancelNoticeShown.value) {
+      new Notice(t('cards.taskCancelled'));
+      cancelNoticeShown.value = true;
+    }
   };
 
   const copyCard = async (card: AssistantCardDraft) => {
@@ -332,7 +374,11 @@
     new Notice(t('cards.savedToWiseMind'));
   };
 
-  const cardsMarkdownBlock = computed(() => formatCardsMarkdownBlock(cards.value));
+  const cardsMarkdownBlock = computed(() => formatCardsMarkdownBlock(cards.value, {
+    title: t('markdownInsert.cardsTitle'),
+    cardTitle: index => t('markdownInsert.cardTitle', {index}),
+    tags: t('markdownInsert.tags'),
+  }));
 
   const insertCardsToCurrentNote = async () => {
     if (!cards.value.length) return;
@@ -353,10 +399,38 @@
       completed: 0,
     });
     loading.value = true;
+    cancelNoticeShown.value = false;
     error.value = '';
     editingIndex.value = null;
+    streamingCardsRaw.value = '';
+    cards.value = [];
     try {
-      cards.value = await generateCards(plugin, plan, controller.value.signal);
+      const generatedCards = await generateCardsStream(
+        plugin,
+        plan,
+        {
+          onDelta: raw => {
+            streamingCardsRaw.value = raw;
+          },
+          onCards: partialCards => {
+            cards.value = partialCards;
+            upsertPluginTask({
+              id: taskId,
+              title: t('cards.taskGeneratingFromSummary'),
+              status: 'running',
+              total: Number(cardCount.value || 0),
+              completed: partialCards.length,
+            });
+          },
+        },
+        controller.value.signal,
+      );
+      if (generatedCards.length) {
+        cards.value = generatedCards;
+      }
+      if (!cards.value.length) {
+        throw new Error(t('cards.taskFailed'));
+      }
       plugin.settings.assistantCardHistory.unshift({
         id: `cards-${Date.now()}`,
         createdAt: Date.now(),
@@ -376,6 +450,7 @@
         total: cards.value.length,
         completed: cards.value.length,
       });
+      new Notice(t('cards.taskGenerated'));
     } catch (err: any) {
       if (!controller.value?.signal.aborted) {
         error.value = err?.message || t('cards.taskFailed');
@@ -385,6 +460,17 @@
           status: 'failed',
           message: error.value,
         });
+        new Notice(error.value);
+      } else {
+        upsertPluginTask({
+          id: taskId,
+          title: t('cards.taskCancelled'),
+          status: 'cancelled',
+        });
+        if (!cancelNoticeShown.value) {
+          new Notice(t('cards.taskCancelled'));
+          cancelNoticeShown.value = true;
+        }
       }
     } finally {
       loading.value = false;
@@ -405,6 +491,7 @@
       tags: [...(card.tags || [])],
       type: card.type,
     }));
+    streamingCardsRaw.value = '';
     error.value = '';
     loading.value = false;
     editingIndex.value = null;
@@ -438,8 +525,10 @@
       </div>
     </header>
 
-    <div class="wm-cards-layout">
-      <aside class="wm-panel wm-card-config-panel">
+    <div
+      class="wm:grid wm:min-w-0 wm:items-start wm:gap-3.5 wm:[grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))]"
+    >
+      <aside class="wm-panel wm:content-start">
         <div class="wm-panel-title">
           <BookmarkSquareIcon class="wm-panel-title-icon" />
           <div class="wm-section-title">{{ t('cards.sourceSection') }}</div>
@@ -504,7 +593,9 @@
           </button>
         </label>
 
-        <footer class="wm-actions wm-card-generate-actions">
+        <footer
+          class="wm:flex wm:items-center wm:justify-center wm:gap-2 wm:border-t wm:border-[var(--background-modifier-border)] wm:pt-3"
+        >
           <button v-if="loading" class="wm-button" type="button" @click="cancelGenerate">{{
             t('cards.cancelGenerate')
           }}</button>
@@ -516,7 +607,7 @@
         </footer>
       </aside>
 
-      <section class="wm-panel wm-card-preview-panel">
+      <section class="wm-panel wm:content-start">
         <div class="wm-panel-title wm-card-preview-title">
           <div class="wm-panel-title">
             <BookmarkSquareIcon class="wm-panel-title-icon" />
@@ -548,18 +639,49 @@
 
         <div
           v-if="loading && !cards.length"
-          class="wm:grid wm:min-h-[180px] wm:place-items-center wm:gap-2 wm:text-center wm:text-[var(--text-muted)]"
+          class="wm:min-h-[180px] wm:min-w-0"
         >
-          <div class="wm:flex wm:gap-2 wm:items-center">
-            <span class="wm-loading-spinner"></span>
-            <strong>{{ t('cards.generatingCards') }}</strong>
+          <div
+            v-if="!streamingCardsRaw"
+            class="wm:grid wm:min-h-[180px] wm:place-items-center wm:gap-2 wm:text-center wm:text-[var(--text-muted)]"
+          >
+            <div class="wm:flex wm:gap-2 wm:items-center">
+              <span class="wm-loading-spinner"></span>
+              <strong>{{ t('cards.generatingCards') }}</strong>
+            </div>
+          </div>
+          <div
+            v-else
+            class="wm:grid wm:gap-2 wm:rounded-lg wm:border wm:border-[var(--background-modifier-border)] wm:bg-[var(--background-secondary)] wm:p-3"
+          >
+            <div class="wm:flex wm:items-center wm:gap-2 wm:text-xs wm:text-[var(--text-muted)]">
+              <span class="wm-loading-spinner"></span>
+              <strong>{{ t('cards.generatingCards') }}</strong>
+            </div>
+            <StreamingMarkdownView :content="streamingCardsRaw" streaming />
           </div>
         </div>
 
         <div v-else-if="cards.length" class="wm:grid wm:min-w-0 wm:gap-2.5">
-          <article v-for="(card, index) in cards" :key="index" class="wm-generated-card">
-            <header class="wm-generated-card-header">
-              <span class="wm-card-index">{{ index + 1 }}</span>
+          <div
+            v-if="loading"
+            class="wm:flex wm:items-center wm:gap-2 wm:rounded-lg wm:border wm:border-[var(--background-modifier-border)] wm:bg-[var(--background-secondary)] wm:px-3 wm:py-2 wm:text-sm wm:text-[var(--text-muted)]"
+          >
+            <span class="wm-loading-spinner"></span>
+            <strong>{{ t('cards.generatingCards') }}</strong>
+          </div>
+          <article
+            v-for="(card, index) in cards"
+            :key="index"
+            class="wm:grid wm:gap-1 wm:rounded-[10px] wm:border wm:border-[var(--background-modifier-border)] wm:bg-[var(--background-primary)] wm:p-3"
+          >
+            <header
+              class="wm:grid wm:items-center wm:gap-2.5 wm:[grid-template-columns:auto_minmax(0,1fr)_auto]"
+            >
+              <span
+                class="wm:inline-flex wm:h-6 wm:w-6 wm:items-center wm:justify-center wm:rounded-lg wm:bg-[color-mix(in_srgb,var(--interactive-accent)_16%,var(--background-primary))] wm:text-sm wm:font-bold wm:text-[var(--interactive-accent)]"
+                >{{ index + 1 }}</span
+              >
               <strong>{{ cardTypeLabel(card) }}</strong>
               <div class="wm:flex wm:gap-1.5">
                 <WmTooltip :content="t('cards.edit')">
@@ -581,14 +703,23 @@
             </header>
             <textarea
               v-model="card.content"
-              class="wm-card-content"
-              :class="{'is-editing': editingIndex === index}"
+              class="wm:w-full wm:rounded-lg wm:border-0 wm:bg-transparent wm:p-0 wm:font-[inherit] wm:text-[var(--text-normal)]"
+              :class="
+                editingIndex === index
+                  ? 'wm:border wm:border-[var(--interactive-accent)] wm:bg-[var(--background-primary)] wm:px-2.5 wm:py-2 wm:resize-y'
+                  : 'wm:resize-none'
+              "
               :data-card-index="index"
               :readonly="editingIndex !== index"
               @blur="editingIndex = null"
             ></textarea>
-            <div class="wm-card-tags">
-              <span v-for="tag in card.tags" :key="tag">#{{ tag.replace(/^#/, '') }}</span>
+            <div class="wm:flex wm:flex-wrap wm:gap-1.5">
+              <span
+                v-for="tag in card.tags"
+                :key="tag"
+                class="wm:rounded-full wm:border wm:border-[var(--background-modifier-border)] wm:bg-[var(--background-primary)] wm:px-2 wm:py-0.5 wm:text-xs wm:text-[var(--text-normal)]"
+                >#{{ tag.replace(/^#/, '') }}</span
+              >
             </div>
           </article>
         </div>

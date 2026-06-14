@@ -1,5 +1,44 @@
+<script lang="ts">
+  import {ref} from 'vue';
+
+  type SearchScope = 'all' | 'obsidian' | 'wisemind';
+  type SearchResult = {
+    id: string;
+    source: 'obsidian' | 'wisemind';
+    title: string;
+    description: string;
+    path?: string;
+    content?: string;
+    wiseMindType?: 'note' | 'file' | 'knowledge-document' | 'card';
+    remoteId?: string;
+    deckId?: string;
+    folderId?: string;
+    knowledgeBaseId?: string;
+    relevanceReason?: string;
+    relevanceScore?: number;
+  };
+
+  type HighlightPart = {
+    text: string;
+    matched: boolean;
+  };
+
+  const sharedSearchPageState = {
+    query: ref(''),
+    searchedKeyword: ref(''),
+    scope: ref<SearchScope>('all'),
+    loading: ref(false),
+    wiseMindResults: ref<SearchResult[]>([]),
+    searched: ref(false),
+    searchHistory: ref<string[]>([]),
+    historyOpen: ref(false),
+    searchRequestId: ref(0),
+  };
+</script>
+
 <script setup lang="ts">
-  import {computed, onMounted, ref} from 'vue';
+  import {computed, onMounted, watch} from 'vue';
+  import {useI18n} from 'vue-i18n';
   import {
     ArrowPathIcon,
     ChatBubbleOvalLeftEllipsisIcon,
@@ -15,62 +54,74 @@
   import {openObsidianNote} from '../../services/noteNavigation';
   import WmTooltip from '../WmTooltip.vue';
 
+  const props = defineProps<{
+    draftKeyword?: string;
+    draftToken?: number;
+  }>();
   const emit = defineEmits<{
     openChat: [message: string];
     openSync: [];
   }>();
 
-  type SearchScope = 'all' | 'obsidian' | 'wisemind';
-  type SearchResult = {
-    id: string;
-    source: 'obsidian' | 'wisemind';
-    title: string;
-    description: string;
-    path?: string;
-    content?: string;
-    wiseMindType?: 'note' | 'file' | 'knowledge-document' | 'card';
-    remoteId?: string;
-    deckId?: string;
-    folderId?: string;
-    knowledgeBaseId?: string;
-  };
-
-  type HighlightPart = {
-    text: string;
-    matched: boolean;
-  };
-
   const SEARCH_HISTORY_STORAGE_KEY = 'wisemindai-obsidian:search-history';
   const MAX_SEARCH_HISTORY = 20;
 
   const plugin = usePlugin();
+  const {t} = useI18n();
   const {notes, refresh} = useVaultNotes();
-  const query = ref('');
-  const searchedKeyword = ref('');
-  const scope = ref<SearchScope>('all');
-  const loading = ref(false);
-  const wiseMindResults = ref<SearchResult[]>([]);
-  const searched = ref(false);
-  const searchHistory = ref<string[]>([]);
-  const historyOpen = ref(false);
-  const searchRequestId = ref(0);
+  const {
+    query,
+    searchedKeyword,
+    scope,
+    loading,
+    wiseMindResults,
+    searched,
+    searchHistory,
+    historyOpen,
+    searchRequestId,
+  } = sharedSearchPageState;
 
   const obsidianResults = computed<SearchResult[]>(() => {
     const keyword = searchedKeyword.value.trim().toLowerCase();
     if (!keyword || scope.value === 'wisemind') return [];
     return notes.value
-      .filter(note =>
-        `${note.title} ${note.path} ${note.plainText}`.toLowerCase().includes(keyword),
-      )
-      .slice(0, 30)
-      .map(note => ({
-        id: note.path,
-        source: 'obsidian' as const,
-        title: note.title,
-        description: note.folderPath || '根目录',
-        path: note.path,
-        content: note.plainText,
-      }));
+      .map(note => {
+        const titleMatched = note.title.toLowerCase().includes(keyword);
+        const tagMatched = (note.tags || []).some(tag => tag.toLowerCase().includes(keyword));
+        const pathMatched = note.path.toLowerCase().includes(keyword);
+        const contentMatched = note.plainText.toLowerCase().includes(keyword);
+        const folderMatched = note.folderPath.toLowerCase().includes(keyword);
+        const score =
+          (titleMatched ? 100 : 0) +
+          (tagMatched ? 80 : 0) +
+          (pathMatched ? 55 : 0) +
+          (folderMatched ? 45 : 0) +
+          (contentMatched ? 25 : 0);
+        const reason = titleMatched
+          ? t('searchPage.reasonTitle')
+          : tagMatched
+            ? t('searchPage.reasonTag')
+            : pathMatched
+              ? t('searchPage.reasonPath')
+              : folderMatched
+                ? t('searchPage.reasonFolder')
+                : contentMatched
+                  ? t('searchPage.reasonContent')
+                  : '';
+        return {
+          id: note.path,
+          source: 'obsidian' as const,
+          title: note.title,
+          description: note.folderPath || t('searchPage.rootFolder'),
+          path: note.path,
+          content: note.plainText,
+          relevanceReason: reason,
+          relevanceScore: score,
+        };
+      })
+      .filter(result => Number(result.relevanceScore || 0) > 0)
+      .sort((a, b) => Number(b.relevanceScore || 0) - Number(a.relevanceScore || 0))
+      .slice(0, 30);
   });
 
   const visibleWiseMindResults = computed(() =>
@@ -85,7 +136,7 @@
   const normalizeWiseMindResult = (item: any, index: number): SearchResult => ({
     id: `wisemind:content:${item?.id ?? index}`,
     source: 'wisemind',
-    title: String(item?.title || item?.name || item?.label || 'WiseMindAI 内容'),
+    title: String(item?.title || item?.name || item?.label || t('searchPage.wisemindContent')),
     description: String(item?.type || item?.sourceType || item?.folderPath || 'WiseMindAI'),
     content: String(item?.content || item?.text || item?.markdown || item?.summary || ''),
     wiseMindType: item?.wiseMindType,
@@ -101,14 +152,14 @@
     if (!payload || typeof payload !== 'object') return [];
 
     const groups: Array<[string, SearchResult['wiseMindType'], any[]]> = [
-      ['笔记', 'note', Array.isArray(payload.notes) ? payload.notes : []],
-      ['文档', 'file', Array.isArray(payload.files) ? payload.files : []],
+      [t('searchPage.notes'), 'note', Array.isArray(payload.notes) ? payload.notes : []],
+      [t('searchPage.files'), 'file', Array.isArray(payload.files) ? payload.files : []],
       [
-        '知识库文档',
+        t('searchPage.knowledgeDocuments'),
         'knowledge-document',
         Array.isArray(payload['knowledge-documents']) ? payload['knowledge-documents'] : [],
       ],
-      ['知识卡片', 'card', Array.isArray(payload.cards) ? payload.cards : []],
+      [t('searchPage.cards'), 'card', Array.isArray(payload.cards) ? payload.cards : []],
     ];
 
     return groups
@@ -209,11 +260,18 @@
       }
     } catch (error: any) {
       if (requestId === searchRequestId.value && scope.value === 'wisemind') {
-        new Notice(error?.message || '搜索 WiseMindAI 失败');
+        new Notice(error?.message || t('searchPage.searchWiseMindFailed'));
       }
     } finally {
       if (requestId === searchRequestId.value) loading.value = false;
     }
+  };
+
+  const applyDraftSearch = (keywordValue?: string) => {
+    const keyword = String(keywordValue || '').trim();
+    if (!keyword) return;
+    query.value = keyword;
+    void search();
   };
 
   const clearSearchResults = () => {
@@ -227,7 +285,10 @@
 
   const openResult = async (result: SearchResult) => {
     if (result.source === 'obsidian' && result.path) {
-      await openObsidianNote(plugin.app, result.path);
+      await openObsidianNote(plugin.app, result.path, {
+        moved: t('obsidianMessages.noteMoved'),
+        openFailed: t('obsidianMessages.noteOpenFailed'),
+      });
       return;
     }
 
@@ -241,22 +302,34 @@
           folderId: result.folderId,
           knowledgeBaseId: result.knowledgeBaseId,
         });
-        new Notice('已在 WiseMindAI 打开');
+        new Notice(t('searchPage.openedInWiseMind'));
       } catch (error: any) {
-        new Notice(error?.message || '打开 WiseMindAI 内容失败');
+        new Notice(error?.message || t('searchPage.openWiseMindFailed'));
       }
     }
   };
 
   const continueChat = (result: SearchResult) => {
     const source = result.path || result.title;
-    emit('openChat', `请基于「${source}」继续分析：${searchedKeyword.value || query.value.trim()}`);
+    emit(
+      'openChat',
+      t('searchPage.continuePrompt', {
+        source,
+        keyword: searchedKeyword.value || query.value.trim(),
+      }),
+    );
   };
 
   onMounted(() => {
     loadSearchHistory();
     void refresh();
   });
+
+  watch(
+    () => props.draftToken,
+    () => applyDraftSearch(props.draftKeyword),
+    {immediate: true},
+  );
 </script>
 
 <template>
@@ -264,14 +337,14 @@
     <header class="wm-page-header">
       <div class="wm-title-line">
         <MagnifyingGlassIcon class="wm-title-icon" />
-        <h2>统一搜索</h2>
+        <h2>{{ t('searchPage.title') }}</h2>
       </div>
-      <WmTooltip content="清空搜索结果">
+      <WmTooltip :content="t('searchPage.clear')">
         <button
           class="wm-icon-button"
           type="button"
           :disabled="!canClearSearchResults"
-          aria-label="清空搜索结果"
+          :aria-label="t('searchPage.clear')"
           @click="clearSearchResults"
         >
           <XMarkIcon class="wm-icon" />
@@ -285,7 +358,7 @@
         <input
           v-model="query"
           class="wm-search-input"
-          placeholder="搜索 Obsidian 和 WiseMindAI 内容"
+          :placeholder="t('searchPage.placeholder')"
           @keydown.enter.prevent="search"
         />
         <button
@@ -296,7 +369,7 @@
         >
           <span v-if="loading" class="wm-loading-spinner"></span>
           <MagnifyingGlassIcon v-else class="wm-icon" />
-          搜索
+          {{ t('searchPage.search') }}
         </button>
         <div class="wm-search-history-menu">
           <button
@@ -305,7 +378,7 @@
             @click.stop="historyOpen = !historyOpen"
           >
             <ClockIcon class="wm-icon" />
-            历史
+            {{ t('searchPage.history') }}
           </button>
           <div v-if="historyOpen" class="wm-search-history-popover">
             <button
@@ -317,19 +390,19 @@
             >
               {{ keyword }}
             </button>
-            <p v-if="!searchHistory.length">还没有搜索历史。</p>
+            <p v-if="!searchHistory.length">{{ t('searchPage.emptyHistory') }}</p>
           </div>
         </div>
       </div>
 
-      <div class="wm-search-tabs" role="tablist" aria-label="搜索范围">
+      <div class="wm-search-tabs" role="tablist" :aria-label="t('searchPage.scope')">
         <button
           class="wm-search-tab"
           :class="{'is-active': scope === 'all'}"
           type="button"
           @click="scope = 'all'"
         >
-          全部
+          {{ t('searchPage.all') }}
         </button>
         <button
           class="wm-search-tab"
@@ -369,10 +442,15 @@
                     {{ result.source === 'obsidian' ? 'Obsidian' : 'WiseMindAI' }} ·
                     {{ result.description }}
                   </p>
+                  <div v-if="result.relevanceReason" class="wm-search-reason">
+                    {{ result.relevanceReason }}
+                  </div>
                 </div>
               </div>
               <div class="wm-search-result-actions">
-                <button class="wm-button" type="button" @click="openResult(result)"> 打开 </button>
+                <button class="wm-button" type="button" @click="openResult(result)">
+                  {{ t('searchPage.open') }}
+                </button>
                 <button
                   v-if="result.source === 'obsidian'"
                   class="wm-button"
@@ -380,7 +458,7 @@
                   @click="continueChat(result)"
                 >
                   <ChatBubbleOvalLeftEllipsisIcon class="wm-icon" />
-                  继续对话
+                  {{ t('searchPage.continueChat') }}
                 </button>
                 <button
                   v-if="result.source === 'obsidian'"
@@ -389,16 +467,16 @@
                   @click="emit('openSync')"
                 >
                   <ArrowPathIcon class="wm-icon" />
-                  同步
+                  {{ t('searchPage.sync') }}
                 </button>
               </div>
             </article>
           </template>
 
-          <div v-else-if="!loading" class="wm-search-empty"> 没有找到匹配内容。 </div>
+          <div v-else-if="!loading" class="wm-search-empty">{{ t('searchPage.noResults') }}</div>
         </template>
 
-        <div v-else class="wm-search-empty"> 请搜索需要的资料名称、内容等。 </div>
+        <div v-else class="wm-search-empty">{{ t('searchPage.empty') }}</div>
       </div>
     </div>
   </section>

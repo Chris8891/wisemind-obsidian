@@ -1,7 +1,26 @@
 import {openWiseMindConnectionDialog} from './services/connectionDialog';
-import type {WiseMindFolder, WiseMindSnapshot} from './types';
+import {translate} from './i18n';
+import type {
+  WiseMindFolder,
+  WiseMindLanguageSetting,
+  WiseMindSnapshot,
+  WiseMindWorkspaceState,
+} from './types';
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+
+type AssistantStreamEvent = {
+  type?: 'delta' | 'final' | 'error' | 'done';
+  text?: string;
+  data?: unknown;
+  error?: string;
+};
+
+type AssistantStreamCallbacks<T = any> = {
+  onDelta?: (text: string) => void;
+  onFinal?: (data: T) => void;
+  onEvent?: (event: AssistantStreamEvent) => void;
+};
 
 export class WiseMindApiError extends Error {
   status?: number;
@@ -30,15 +49,30 @@ export class WiseMindApiClient {
   private baseUrl: string;
   private fetchImpl: FetchLike;
   private timeoutMs: number;
+  private language: () => WiseMindLanguageSetting | undefined;
 
-  constructor(baseUrl: string, fetchImpl: FetchLike = fetch.bind(globalThis), timeoutMs = 10000) {
+  constructor(
+    baseUrl: string,
+    fetchImpl: FetchLike = fetch.bind(globalThis),
+    timeoutMs = 10000,
+    language: () => WiseMindLanguageSetting | undefined = () => undefined,
+  ) {
     this.baseUrl = normalizeBaseUrl(baseUrl);
     this.fetchImpl = fetchImpl;
     this.timeoutMs = timeoutMs;
+    this.language = language;
+  }
+
+  private t(key: string, params?: Record<string, unknown>) {
+    return translate(this.language(), key, params);
   }
 
   async health() {
     return this.request('/api/v2/health');
+  }
+
+  async getWorkspaceState() {
+    return this.getData<WiseMindWorkspaceState>('/api/v2/workspace/state');
   }
 
   async search(q: string, types?: string[]) {
@@ -67,12 +101,45 @@ export class WiseMindApiClient {
     return this.postData('/api/v2/assistant/summarize', payload, {timeoutMs: 120000, signal: options.signal});
   }
 
+  async summarizeContentStream(
+    payload: Record<string, unknown>,
+    callbacks: AssistantStreamCallbacks = {},
+    options: {signal?: AbortSignal} = {},
+  ) {
+    return this.postStream('/api/v2/assistant/summarize/stream', payload, callbacks, {
+      timeoutMs: 300000,
+      signal: options.signal,
+    });
+  }
+
   async generateCards(payload: Record<string, unknown>, options: {signal?: AbortSignal} = {}) {
     return this.postData('/api/v2/assistant/generate-cards', payload, {timeoutMs: 120000, signal: options.signal});
   }
 
+  async generateCardsStream(
+    payload: Record<string, unknown>,
+    callbacks: AssistantStreamCallbacks = {},
+    options: {signal?: AbortSignal} = {},
+  ) {
+    return this.postStream('/api/v2/assistant/generate-cards/stream', payload, callbacks, {
+      timeoutMs: 300000,
+      signal: options.signal,
+    });
+  }
+
   async chat(payload: Record<string, unknown>, options: {signal?: AbortSignal} = {}) {
     return this.postData('/api/v2/assistant/chat', payload, {timeoutMs: 120000, signal: options.signal});
+  }
+
+  async chatStream(
+    payload: Record<string, unknown>,
+    callbacks: AssistantStreamCallbacks = {},
+    options: {signal?: AbortSignal} = {},
+  ) {
+    return this.postStream('/api/v2/assistant/chat/stream', payload, callbacks, {
+      timeoutMs: 300000,
+      signal: options.signal,
+    });
   }
 
   async rewriteText(
@@ -260,6 +327,134 @@ export class WiseMindApiClient {
     return (response?.data ?? response) as T;
   }
 
+  private async postStream<T = any>(
+    path: string,
+    body: Record<string, unknown>,
+    callbacks: AssistantStreamCallbacks<T>,
+    options: {timeoutMs?: number; signal?: AbortSignal} = {},
+  ): Promise<T> {
+    const controller = new AbortController();
+    const timeoutMs = options.timeoutMs || this.timeoutMs;
+    const method = 'POST';
+    const url = `${this.baseUrl}${path}`;
+    const baseDebug: WiseMindApiRequestDebug = {
+      method,
+      url,
+      path,
+      timeoutMs,
+      requestBody: sanitizeRequestBody(body),
+    };
+    const abortFromExternalSignal = () => controller.abort();
+    if (options.signal?.aborted) {
+      controller.abort();
+    } else {
+      options.signal?.addEventListener('abort', abortFromExternalSignal, {once: true});
+    }
+    const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+    let finalData: T | undefined;
+    try {
+      const response = await this.fetchImpl(url, {
+        method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        let parsed: any = {};
+        try {
+          parsed = text ? JSON.parse(text) : {};
+        } catch {
+          parsed = {error: text};
+        }
+        throw new WiseMindApiError(
+          parsed?.error || parsed?.message || this.t('apiErrors.requestFailed', {status: response.status}),
+          response.status,
+          {...baseDebug, status: response.status, responseBody: parsed},
+        );
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new WiseMindApiError(this.t('apiErrors.streamingUnsupported'), response.status, {
+          ...baseDebug,
+          status: response.status,
+        });
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, {stream: true});
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          const event = parseStreamLine(line);
+          if (!event) continue;
+          callbacks.onEvent?.(event);
+          if (event.type === 'delta' && event.text) {
+            callbacks.onDelta?.(event.text);
+          }
+          if (event.type === 'final') {
+            finalData = event.data as T;
+            callbacks.onFinal?.(finalData);
+          }
+          if (event.type === 'error') {
+            throw new WiseMindApiError(event.error || this.t('apiErrors.streamFailed'), response.status, {
+              ...baseDebug,
+              status: response.status,
+              responseBody: event,
+            });
+          }
+        }
+      }
+
+      if (buffer.trim()) {
+        const event = parseStreamLine(buffer);
+        if (event?.type === 'final') finalData = event.data as T;
+        if (event?.type === 'error') {
+          throw new WiseMindApiError(event.error || this.t('apiErrors.streamFailed'), response.status, {
+            ...baseDebug,
+            status: response.status,
+            responseBody: event,
+          });
+        }
+      }
+
+      if (finalData === undefined) {
+        throw new WiseMindApiError(this.t('apiErrors.noFinalResult'), response.status, {
+          ...baseDebug,
+          status: response.status,
+        });
+      }
+      return finalData;
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        if (!options.signal?.aborted) openWiseMindConnectionDialog();
+        throw new WiseMindApiError(options.signal?.aborted
+          ? this.t('apiErrors.aborted')
+          : this.t('apiErrors.timeout', {seconds: Math.round(timeoutMs / 1000)}), undefined, {
+          ...baseDebug,
+          error: options.signal?.aborted ? 'aborted' : 'timeout',
+        });
+      }
+      if (error instanceof WiseMindApiError) {
+        throw error;
+      }
+      openWiseMindConnectionDialog();
+      throw new WiseMindApiError(error?.message || this.t('apiErrors.connectFailed'), undefined, {
+        ...baseDebug,
+        error: error?.message || 'network error',
+      });
+    } finally {
+      options.signal?.removeEventListener('abort', abortFromExternalSignal);
+      globalThis.clearTimeout(timeout);
+    }
+  }
+
   private async request(
     path: string,
     init: RequestInit = {},
@@ -299,7 +494,7 @@ export class WiseMindApiClient {
         try {
           json = JSON.parse(text);
         } catch {
-          throw new WiseMindApiError('WiseMindAI 本地接口返回了无法解析的数据', response.status, {
+          throw new WiseMindApiError(this.t('apiErrors.invalidJson'), response.status, {
             ...baseDebug,
             status: response.status,
             responseBody: text.slice(0, 1000),
@@ -309,7 +504,7 @@ export class WiseMindApiClient {
 
       if (!response.ok) {
         throw new WiseMindApiError(
-          json?.error || json?.message || `WiseMindAI 请求失败：${response.status}`,
+          json?.error || json?.message || this.t('apiErrors.requestFailed', {status: response.status}),
           response.status,
           {
             ...baseDebug,
@@ -323,7 +518,9 @@ export class WiseMindApiClient {
     } catch (error: any) {
       if (error?.name === 'AbortError') {
         if (!options.signal?.aborted) openWiseMindConnectionDialog();
-        throw new WiseMindApiError(options.signal?.aborted ? '已取消 WiseMindAI 请求' : `连接 WiseMindAI 本地接口超时（${Math.round(timeoutMs / 1000)} 秒）`, undefined, {
+        throw new WiseMindApiError(options.signal?.aborted
+          ? this.t('apiErrors.aborted')
+          : this.t('apiErrors.timeout', {seconds: Math.round(timeoutMs / 1000)}), undefined, {
           ...baseDebug,
           error: options.signal?.aborted ? 'aborted' : 'timeout',
         });
@@ -332,7 +529,7 @@ export class WiseMindApiClient {
         throw error;
       }
       openWiseMindConnectionDialog();
-      throw new WiseMindApiError(error?.message || '无法连接 WiseMindAI 本地接口', undefined, {
+      throw new WiseMindApiError(error?.message || this.t('apiErrors.connectFailed'), undefined, {
         ...baseDebug,
         error: error?.message || 'network error',
       });
@@ -362,6 +559,16 @@ export const toQuery = (params: Record<string, string | number | boolean | undef
 const normalizeNullable = (value?: string | number | null) => {
   if (value === undefined || value === null || value === '') return null;
   return String(value);
+};
+
+const parseStreamLine = (line: string): AssistantStreamEvent | null => {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed) as AssistantStreamEvent;
+  } catch {
+    return null;
+  }
 };
 
 const sanitizeRequestBody = (value: unknown) => {

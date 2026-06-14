@@ -5,7 +5,22 @@ import { findSourceMarker } from './markers';
 import { quoteYamlString, sanitizeFileName } from './text';
 import type { DuplicatePolicy, SyncItemResult, WiseMindSourceItem } from './types';
 
-export const buildObsidianDestinationPath = (item: WiseMindSourceItem, root: string, includeFolder = true) => {
+export type ObsidianWriterLabels = {
+  unnamedKnowledge: string;
+  skippedSameSource: string;
+};
+
+const defaultLabels: ObsidianWriterLabels = {
+  unnamedKnowledge: 'Untitled knowledge base',
+  skippedSameSource: 'A file from the same source already exists',
+};
+
+export const buildObsidianDestinationPath = (
+  item: WiseMindSourceItem,
+  root: string,
+  includeFolder = true,
+  labels: ObsidianWriterLabels = defaultLabels,
+) => {
   const safeRoot = trimSlashes(root);
   const safeTitle = sanitizeFileName(item.title, `${item.sourceType}-${item.id}`);
   const folder = includeFolder
@@ -13,7 +28,7 @@ export const buildObsidianDestinationPath = (item: WiseMindSourceItem, root: str
       ? item.folderPath || ''
       : item.sourceType === 'document'
         ? item.folderPath || ''
-        : sanitizeFileName(item.knowledgeBaseName || '未命名知识库', '未命名知识库')
+        : sanitizeFileName(item.knowledgeBaseName || labels.unnamedKnowledge, labels.unnamedKnowledge)
     : '';
   return normalizePath(`${safeRoot ? `${safeRoot}/` : ''}${folder}/${safeTitle}.md`);
 };
@@ -39,8 +54,9 @@ export const writeWiseMindItemToObsidian = async (
   root: string,
   policy: DuplicatePolicy,
   includeFolder = true,
+  labels: ObsidianWriterLabels = defaultLabels,
 ): Promise<SyncItemResult> => {
-  const targetPath = buildObsidianDestinationPath(item, root, includeFolder);
+  const targetPath = buildObsidianDestinationPath(item, root, includeFolder, labels);
   const markdown = await prepareWiseMindImagesForObsidian(app, item.markdown, targetPath);
   const content = buildObsidianFileContent(item, markdown);
   const existingPath = await findExistingWiseMindFile(app, item, targetPath);
@@ -48,18 +64,18 @@ export const writeWiseMindItemToObsidian = async (
   if (existingPath) {
     const existingFile = app.vault.getAbstractFileByPath(existingPath) as TFile | null;
     if (policy === 'skip') {
-      return { title: item.title, source: existingPath, target: `Obsidian：${existingPath}`, status: 'skipped', message: '已存在同来源文件' };
+      return { title: item.title, source: existingPath, target: `Obsidian: ${existingPath}`, status: 'skipped', message: labels.skippedSameSource };
     }
     if (policy === 'update' && existingFile) {
       await app.vault.modify(existingFile, content);
-      return { title: item.title, source: existingPath, target: `Obsidian：${existingPath}`, status: 'updated' };
+      return { title: item.title, source: existingPath, target: `Obsidian: ${existingPath}`, status: 'updated' };
     }
   }
 
   const finalPath = policy === 'duplicate' ? await nextAvailablePath(app, targetPath) : targetPath;
   await ensureFolder(app, finalPath.split('/').slice(0, -1).join('/'));
   await app.vault.create(finalPath, content);
-  return { title: item.title, source: finalPath, target: `Obsidian：${finalPath}`, status: 'created' };
+  return { title: item.title, source: finalPath, target: `Obsidian: ${finalPath}`, status: 'created' };
 };
 
 export const ensureFolder = async (app: App, folderPath: string) => {

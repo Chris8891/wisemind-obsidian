@@ -18,17 +18,53 @@ export type ObsidianToWiseMindOptions = {
   chunkSize: number;
   signal?: AbortSignal;
   onProgress?: (result: SyncRunResult) => void;
+  labels?: ObsidianToWiseMindImportLabels;
+};
+
+export type ObsidianToWiseMindImportLabels = {
+  defaultKnowledgeBase: string;
+  note: string;
+  document: string;
+  knowledge: string;
+  rootFolder: string;
+  noteUpdated: (target: string) => string;
+  noteCreated: (target: string) => string;
+  documentUpdated: (target: string) => string;
+  documentCreated: (target: string) => string;
+  knowledgeDesc: string;
+  knowledgeUpdated: (target: string) => string;
+  knowledgeCreated: (target: string) => string;
+  failed: string;
+  failedTarget: string;
+};
+
+const defaultLabels: ObsidianToWiseMindImportLabels = {
+  defaultKnowledgeBase: 'Obsidian import',
+  note: 'Note',
+  document: 'Document',
+  knowledge: 'Knowledge base',
+  rootFolder: 'Root',
+  noteUpdated: target => `Updated WiseMindAI note${target}`,
+  noteCreated: target => `Imported as WiseMindAI note${target}`,
+  documentUpdated: target => `Updated WiseMindAI document${target}`,
+  documentCreated: target => `Imported as WiseMindAI document${target}`,
+  knowledgeDesc: 'Imported from Obsidian',
+  knowledgeUpdated: target => `Updated WiseMindAI knowledge base: ${target}`,
+  knowledgeCreated: target => `Imported into WiseMindAI knowledge base: ${target}`,
+  failed: 'Import failed',
+  failedTarget: 'Failed',
 };
 
 export const runObsidianToWiseMindImport = async (options: ObsidianToWiseMindOptions): Promise<SyncRunResult> => {
   const result = emptyResult();
+  const labels = options.labels || defaultLabels;
   const folderCache = new Map<string, string | number | null>();
   const knowledgeBaseCache = new Map<string, number | string | null>();
   const noteFolderRoots = options.noteFolderPaths?.length ? options.noteFolderPaths : [''];
   const documentFolderRoots = options.documentFolderPaths?.length ? options.documentFolderPaths : [''];
   const knowledgeBaseNames = options.knowledgeBaseNames?.length
     ? options.knowledgeBaseNames
-    : [options.knowledgeBaseName || 'Obsidian 导入'];
+    : [options.knowledgeBaseName || labels.defaultKnowledgeBase];
 
   for (let index = 0; index < options.items.length; index += options.chunkSize || 10) {
     if (options.signal?.aborted) break;
@@ -67,10 +103,10 @@ export const runObsidianToWiseMindImport = async (options: ObsidianToWiseMindOpt
               : null;
             if (existing) {
               await options.api.updateNote(existing.id, payload);
-              push(result, item.title, item.path, 'updated', `已覆盖 WiseMindAI 笔记${rootPath ? `：${rootPath}` : ''}`, wiseMindTargetLabel('笔记', rootPath));
+              push(result, item.title, item.path, 'updated', labels.noteUpdated(formatOptionalTarget(rootPath)), wiseMindTargetLabel(labels.note, rootPath, labels));
             } else {
               await options.api.createNote(payload);
-              push(result, item.title, item.path, 'created', `已导入为 WiseMindAI 笔记${rootPath ? `：${rootPath}` : ''}`, wiseMindTargetLabel('笔记', rootPath));
+              push(result, item.title, item.path, 'created', labels.noteCreated(formatOptionalTarget(rootPath)), wiseMindTargetLabel(labels.note, rootPath, labels));
             }
           }
         }
@@ -99,10 +135,10 @@ export const runObsidianToWiseMindImport = async (options: ObsidianToWiseMindOpt
               : null;
             if (existing) {
               await options.api.updateDocument(existing.id, payload);
-              push(result, item.title, item.path, 'updated', `已覆盖 WiseMindAI 文档${rootPath ? `：${rootPath}` : ''}`, wiseMindTargetLabel('文档', rootPath));
+              push(result, item.title, item.path, 'updated', labels.documentUpdated(formatOptionalTarget(rootPath)), wiseMindTargetLabel(labels.document, rootPath, labels));
             } else {
               await options.api.createDocument(payload);
-              push(result, item.title, item.path, 'created', `已导入为 WiseMindAI 文档${rootPath ? `：${rootPath}` : ''}`, wiseMindTargetLabel('文档', rootPath));
+              push(result, item.title, item.path, 'created', labels.documentCreated(formatOptionalTarget(rootPath)), wiseMindTargetLabel(labels.document, rootPath, labels));
             }
           }
         }
@@ -112,7 +148,7 @@ export const runObsidianToWiseMindImport = async (options: ObsidianToWiseMindOpt
             if (!knowledgeBaseCache.has(baseName)) {
               const base: any = await options.api.resolveKnowledgeBase(baseName, {
                 icon: '📚',
-                desc: '从 Obsidian 导入的内容',
+                desc: labels.knowledgeDesc,
               });
               knowledgeBaseCache.set(baseName, base?.id ?? null);
             }
@@ -138,15 +174,15 @@ export const runObsidianToWiseMindImport = async (options: ObsidianToWiseMindOpt
               : null;
             if (existing) {
               await options.api.updateKnowledgeDocument(existing.id, payload);
-              push(result, item.title, item.path, 'updated', `已覆盖 WiseMindAI 知识库：${baseName}`, wiseMindTargetLabel('知识库', baseName));
+              push(result, item.title, item.path, 'updated', labels.knowledgeUpdated(baseName), wiseMindTargetLabel(labels.knowledge, baseName, labels));
             } else {
               await options.api.createKnowledgeDocument(payload);
-              push(result, item.title, item.path, 'created', `已导入为 WiseMindAI 知识库：${baseName}`, wiseMindTargetLabel('知识库', baseName));
+              push(result, item.title, item.path, 'created', labels.knowledgeCreated(baseName), wiseMindTargetLabel(labels.knowledge, baseName, labels));
             }
           }
         }
       } catch (error: any) {
-        push(result, item.title, item.path, 'failed', error?.message || '导入失败', '失败');
+        push(result, item.title, item.path, 'failed', error?.message || labels.failed, labels.failedTarget);
       }
       options.onProgress?.(result);
     }
@@ -157,7 +193,12 @@ export const runObsidianToWiseMindImport = async (options: ObsidianToWiseMindOpt
 
 const normalizeRemoteId = (id: string | number | null | undefined) => id === null || id === undefined || id === '' ? null : String(id);
 const normalizeTitle = (value: unknown) => typeof value === 'string' ? value.trim() : '';
-const wiseMindTargetLabel = (type: string, value: string) => `${type}：${value || '根目录'}`;
+const formatOptionalTarget = (value: string) => (value ? `: ${value}` : '');
+const wiseMindTargetLabel = (
+  type: string,
+  value: string,
+  labels: ObsidianToWiseMindImportLabels,
+) => `${type}: ${value || labels.rootFolder}`;
 
 const findExistingNote = async (api: WiseMindApiClient, title: string, folder: string | null) => {
   const items = await api.listNotes({ q: title, from_folder: folder ?? undefined, limit: 200 }).catch(() => []);

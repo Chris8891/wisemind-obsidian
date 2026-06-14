@@ -3,9 +3,9 @@ import { addIcon, Notice, Plugin, TAbstractFile } from 'obsidian';
 import wiseMindLogoIcon from './assets/icons/wisemindai-logo.svg?raw';
 import {
   type EditorRewriteAction,
+  type EditorRewriteLabels,
   extractRewriteText,
   formatRewriteResult,
-  rewriteActionCommandName,
   rewriteActionLabel,
 } from './services/editorRewriteActions';
 import type {WiseMindDestination, WiseMindDestinationTarget} from './services/wisemindDestinations';
@@ -26,7 +26,7 @@ import type { ImportTargetSelection, WiseMindImportSettings } from './types';
 import { readObsidianFile } from './vaultScanner';
 import { WiseMindApiClient } from './wisemindApi';
 
-import './styles.css';
+import './styles.scss';
 
 type ContextMenuTarget = keyof ImportTargetSelection;
 
@@ -38,12 +38,21 @@ export default class WiseMindObsidianPlugin extends Plugin {
   async onload() {
     this.settings = this.normalizeSettings((await this.loadData()) as Partial<WiseMindImportSettings> | null);
     setI18nLocale(this.settings.assistantDefaults.language);
-    this.api = new WiseMindApiClient(this.settings.apiBaseUrl);
+    this.api = new WiseMindApiClient(
+      this.settings.apiBaseUrl,
+      fetch.bind(globalThis),
+      10000,
+      () => this.settings.assistantDefaults.language,
+    );
 
     addIcon(WISEMIND_ICON_ID, WISEMIND_OBSIDIAN_ICON);
     this.addSettingTab(new WiseMindSettingTab(this.app, this));
     this.registerView(WISEMIND_VIEW_TYPE, leaf => new WiseMindObsidianView(leaf, this));
-    this.statusBar = new WiseMindStatusBar(this.addStatusBarItem(), () => void this.activateView());
+    this.statusBar = new WiseMindStatusBar(
+      this.addStatusBarItem(),
+      () => void this.activateView(),
+      () => this.settings.assistantDefaults.language,
+    );
 
     const ribbonIcon = this.addRibbonIcon(WISEMIND_ICON_ID, 'WiseMindAI', () => void this.activateView());
     if (!ribbonIcon.querySelector('svg')) {
@@ -60,7 +69,12 @@ export default class WiseMindObsidianPlugin extends Plugin {
   }
 
   async saveSettings() {
-    this.api = new WiseMindApiClient(this.settings.apiBaseUrl);
+    this.api = new WiseMindApiClient(
+      this.settings.apiBaseUrl,
+      fetch.bind(globalThis),
+      10000,
+      () => this.settings.assistantDefaults.language,
+    );
     setI18nLocale(this.settings.assistantDefaults.language);
     await this.saveData(this.settings);
   }
@@ -105,8 +119,41 @@ export default class WiseMindObsidianPlugin extends Plugin {
       await this.activateView();
       window.dispatchEvent(new CustomEvent('wisemindai:assistant-action', { detail: plan }));
     } catch (error: any) {
-      new Notice(error?.message || '没有可处理的内容');
+      new Notice(error?.message || this.t('obsidianMessages.noProcessableContent'));
     }
+  }
+
+  private t(key: string, params?: Record<string, unknown>) {
+    return translate(this.settings.assistantDefaults.language, key, params);
+  }
+
+  private rewriteLabels(): EditorRewriteLabels {
+    return {
+      rewrite: this.t('editorRewrite.rewrite'),
+      expand: this.t('editorRewrite.expand'),
+      shorten: this.t('editorRewrite.shorten'),
+      polish: this.t('editorRewrite.polish'),
+      tags: this.t('editorRewrite.tags'),
+    };
+  }
+
+  private importRunnerLabels() {
+    return {
+      defaultKnowledgeBase: this.t('importRunner.defaultKnowledgeBase'),
+      note: this.t('importRunner.note'),
+      document: this.t('importRunner.document'),
+      knowledge: this.t('importRunner.knowledge'),
+      rootFolder: this.t('importRunner.rootFolder'),
+      noteUpdated: (target: string) => this.t('importRunner.noteUpdated', {target}),
+      noteCreated: (target: string) => this.t('importRunner.noteCreated', {target}),
+      documentUpdated: (target: string) => this.t('importRunner.documentUpdated', {target}),
+      documentCreated: (target: string) => this.t('importRunner.documentCreated', {target}),
+      knowledgeDesc: this.t('importRunner.knowledgeDesc'),
+      knowledgeUpdated: (target: string) => this.t('importRunner.knowledgeUpdated', {target}),
+      knowledgeCreated: (target: string) => this.t('importRunner.knowledgeCreated', {target}),
+      failed: this.t('importRunner.failed'),
+      failedTarget: this.t('importRunner.failedTarget'),
+    };
   }
 
   private normalizeSettings(raw: Partial<WiseMindImportSettings> | null) {
@@ -117,42 +164,42 @@ export default class WiseMindObsidianPlugin extends Plugin {
     const rewriteActions: EditorRewriteAction[] = ['rewrite', 'expand', 'shorten', 'polish', 'tags'];
     this.addCommand({
       id: 'open-wisemindai',
-      name: 'WiseMindAI: 打开面板',
+      name: this.t('commands.openPanel'),
       callback: () => void this.activateView(),
     });
     this.addCommand({
       id: 'send-current-note-to-wisemind',
-      name: 'WiseMindAI: 发送当前笔记',
+      name: this.t('commands.sendCurrentNote'),
       callback: () => void this.sendActiveFileWithTarget('notes'),
     });
     this.addCommand({
       id: 'send-current-folder-to-wisemind',
-      name: 'WiseMindAI: 发送当前文件夹',
+      name: this.t('commands.sendCurrentFolder'),
       callback: () => void this.sendActiveFolder(),
     });
     this.addCommand({
       id: 'summarize-current-note',
-      name: 'WiseMindAI: 总结当前笔记',
+      name: this.t('commands.summarizeCurrentNote'),
       callback: () => void this.runAssistantAction('summary'),
     });
     this.addCommand({
       id: 'summarize-selected-text',
-      name: 'WiseMindAI: 总结选中文本',
+      name: this.t('commands.summarizeSelectedText'),
       callback: () => void this.runAssistantAction('summary', this.getActiveEditorSelection()),
     });
     this.addCommand({
       id: 'generate-cards-current-note',
-      name: 'WiseMindAI: 从当前笔记生成知识卡片',
+      name: this.t('commands.cardsCurrentNote'),
       callback: () => void this.runAssistantAction('cards'),
     });
     this.addCommand({
       id: 'generate-cards-selected-text',
-      name: 'WiseMindAI: 从选中文本生成知识卡片',
+      name: this.t('commands.cardsSelectedText'),
       callback: () => void this.runAssistantAction('cards', this.getActiveEditorSelection()),
     });
     this.addCommand({
       id: 'test-wisemind-connection',
-      name: 'WiseMindAI: 测试连接',
+      name: this.t('commands.testConnection'),
       callback: async () => {
         const ok = await this.testConnection();
         new Notice(ok
@@ -163,7 +210,7 @@ export default class WiseMindObsidianPlugin extends Plugin {
     rewriteActions.forEach(action => {
       this.addCommand({
         id: `rewrite-selected-text-${action}`,
-        name: rewriteActionCommandName(action),
+        name: this.t('commands.rewriteSelected', {action: rewriteActionLabel(action, this.rewriteLabels())}),
         callback: () => void this.runEditorRewriteAction(action),
       });
     });
@@ -188,19 +235,19 @@ export default class WiseMindObsidianPlugin extends Plugin {
         if (selectedText.trim()) {
           menu.addItem(item =>
             item
-              .setTitle('发送选中文本到 WiseMindAI 笔记')
+              .setTitle(this.t('contextMenu.sendSelectedToNotes'))
               .setIcon(WISEMIND_ICON_ID)
-              .onClick(() => void this.sendSelectedTextWithTarget(selectedText, view.file?.path || '当前笔记')),
+              .onClick(() => void this.sendSelectedTextWithTarget(selectedText, view.file?.path || this.t('contextMenu.currentNote'))),
           );
           menu.addItem(item =>
             item
-              .setTitle('用 WiseMindAI 总结选中文本')
+              .setTitle(this.t('contextMenu.summarizeSelected'))
               .setIcon(WISEMIND_ICON_ID)
               .onClick(() => void this.runAssistantAction('summary', selectedText)),
           );
           menu.addItem(item =>
             item
-              .setTitle('用 WiseMindAI 生成知识卡片')
+              .setTitle(this.t('contextMenu.cardsSelected'))
               .setIcon(WISEMIND_ICON_ID)
               .onClick(() => void this.runAssistantAction('cards', selectedText)),
           );
@@ -208,7 +255,7 @@ export default class WiseMindObsidianPlugin extends Plugin {
             action => {
               menu.addItem(item =>
                 item
-                  .setTitle(`WiseMindAI ${rewriteActionLabel(action)}`)
+                  .setTitle(`WiseMindAI ${rewriteActionLabel(action, this.rewriteLabels())}`)
                   .setIcon(WISEMIND_ICON_ID)
                   .onClick(() => void this.runEditorRewriteAction(action, selectedText)),
               );
@@ -223,7 +270,7 @@ export default class WiseMindObsidianPlugin extends Plugin {
     const editor = (this.app.workspace as any).activeEditor?.editor;
     const text = selectedText || editor?.getSelection?.() || '';
     if (!editor || !text.trim()) {
-      new Notice('当前编辑器没有选中文本');
+      new Notice(this.t('obsidianMessages.noSelection'));
       return;
     }
 
@@ -235,22 +282,25 @@ export default class WiseMindObsidianPlugin extends Plugin {
       });
       const rewritten = extractRewriteText(response);
       if (!rewritten) {
-        new Notice('WiseMindAI 没有返回可插入的内容');
+        new Notice(this.t('obsidianMessages.noInsertContent'));
         return;
       }
-      editor.replaceSelection(formatRewriteResult(action, text, rewritten));
-      new Notice(`WiseMindAI ${rewriteActionLabel(action)}已插入`);
+      const actionLabel = rewriteActionLabel(action, this.rewriteLabels());
+      editor.replaceSelection(formatRewriteResult(action, text, rewritten, this.rewriteLabels()));
+      new Notice(this.t('obsidianMessages.rewriteInserted', {action: actionLabel}));
     } catch (error: any) {
-      new Notice(error?.message || `WiseMindAI ${rewriteActionLabel(action)}失败`);
+      new Notice(error?.message || this.t('obsidianMessages.rewriteFailed', {
+        action: rewriteActionLabel(action, this.rewriteLabels()),
+      }));
     }
   }
 
   private addFileMenuItems(menu: any, files: any[], folder = false) {
-    const prefix = folder ? '发送整个文件夹到' : '发送到';
+    const prefix = folder ? this.t('contextMenu.sendFolderPrefix') : this.t('contextMenu.sendPrefix');
     [
-      ['notes', 'WiseMindAI 笔记'],
-      ['documents', 'WiseMindAI 文档'],
-      ['knowledge', 'WiseMindAI 知识库'],
+      ['notes', this.t('contextMenu.notesTarget')],
+      ['documents', this.t('contextMenu.documentsTarget')],
+      ['knowledge', this.t('contextMenu.knowledgeTarget')],
     ].forEach(([target, label]) => {
       menu.addItem((item: any) =>
         item
@@ -264,7 +314,7 @@ export default class WiseMindObsidianPlugin extends Plugin {
   private async sendActiveFileWithTarget(target: ContextMenuTarget) {
     const file = this.app.workspace.getActiveFile();
     if (!file || (file as any).extension !== 'md') {
-      new Notice('当前没有打开的 Markdown 笔记');
+      new Notice(this.t('obsidianMessages.noMarkdownNote'));
       return;
     }
     await this.sendFilesWithTarget([file as any], target);
@@ -273,7 +323,7 @@ export default class WiseMindObsidianPlugin extends Plugin {
   private async sendActiveFolder() {
     const file = this.app.workspace.getActiveFile();
     if (!file?.parent) {
-      new Notice('当前没有可发送的文件夹');
+      new Notice(this.t('obsidianMessages.noSendableFolder'));
       return;
     }
     const files = collectMarkdownFiles(this.app, file.parent as any);
@@ -282,7 +332,7 @@ export default class WiseMindObsidianPlugin extends Plugin {
 
   private async sendFilesWithTarget(files: any[], target: ContextMenuTarget) {
     if (!files.length) {
-      new Notice('没有可发送的 Markdown 笔记');
+      new Notice(this.t('obsidianMessages.noSendableNotes'));
       return;
     }
     const destination = await this.resolveContextMenuDestination(target);
@@ -303,14 +353,17 @@ export default class WiseMindObsidianPlugin extends Plugin {
       duplicatePolicy: this.settings.duplicatePolicy,
       knowledgeBaseName: this.settings.contextMenuDefaults.knowledgeBaseName,
       chunkSize: this.settings.chunkSize,
+      labels: this.importRunnerLabels(),
       onProgress: () => this.statusBar?.setSyncing(),
     });
     this.statusBar?.setConnected();
-    new Notice(`已发送 ${result.created + result.updated + result.skipped} 篇笔记到 WiseMindAI`);
+    new Notice(this.t('obsidianMessages.sentNotes', {
+      count: result.created + result.updated + result.skipped,
+    }));
   }
 
   private async sendSelectedTextWithTarget(text: string, sourcePath: string) {
-    const title = sourcePath.replace(/\.md$/i, '') || 'Obsidian 选中文本';
+    const title = sourcePath.replace(/\.md$/i, '') || this.t('obsidianMessages.selectedTextTitle');
     await this.api.createNote({
       title,
       content: text,
@@ -318,7 +371,7 @@ export default class WiseMindObsidianPlugin extends Plugin {
       source: 'obsidian',
       sourcePath,
     });
-    new Notice('选中文本已发送到 WiseMindAI 笔记');
+    new Notice(this.t('obsidianMessages.selectedTextSent'));
   }
 
   private async resolveContextMenuDestination(target: ContextMenuTarget): Promise<WiseMindDestination | null> {

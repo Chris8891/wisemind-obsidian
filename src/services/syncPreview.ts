@@ -7,6 +7,27 @@ export type SyncPreviewInput = {
   overwriteExisting: boolean;
 };
 
+export type SyncPreviewLabels = {
+  obsidianNotes: string;
+  wiseMindContent: string;
+  wiseMindTarget: string;
+  obsidianTarget: string;
+  title: (params: {count: number; source: string}) => string;
+  unselected: string;
+  overwriteWarning: string;
+};
+
+const defaultLabels: SyncPreviewLabels = {
+  obsidianNotes: 'Obsidian notes',
+  wiseMindContent: 'WiseMindAI content',
+  wiseMindTarget: 'WiseMindAI target',
+  obsidianTarget: 'Obsidian target',
+  title: ({count, source}) => `Ready to sync ${count} ${source}`,
+  unselected: 'Not selected',
+  overwriteWarning:
+    'This will update content from the same source. Confirm the target location and content count before continuing.',
+};
+
 export type SyncPreview = {
   title: string;
   riskLevel: 'info' | 'warning';
@@ -14,19 +35,20 @@ export type SyncPreview = {
   warningText: string;
 };
 
-export const buildSyncPreview = (input: SyncPreviewInput): SyncPreview => {
+export const buildSyncPreview = (
+  input: SyncPreviewInput,
+  labels: SyncPreviewLabels = defaultLabels,
+): SyncPreview => {
   const sourceLabel =
-    input.direction === 'to-wisemind' ? 'Obsidian 笔记' : 'WiseMindAI 内容';
-  const targetLabel = input.direction === 'to-wisemind' ? 'WiseMindAI 目标' : 'Obsidian 目标';
+    input.direction === 'to-wisemind' ? labels.obsidianNotes : labels.wiseMindContent;
+  const targetLabel = input.direction === 'to-wisemind' ? labels.wiseMindTarget : labels.obsidianTarget;
 
   return {
-    title: `准备同步 ${input.sourceCount} 篇 ${sourceLabel}`,
+    title: labels.title({count: input.sourceCount, source: sourceLabel}),
     riskLevel: input.overwriteExisting ? 'warning' : 'info',
     rows: input.targetLabels.length
       ? input.targetLabels.map(value => ({label: targetLabel, value}))
-      : [{label: targetLabel, value: '未选择'}],
-    warningText: input.overwriteExisting
-      ? '当前会更新同来源内容，请确认目标位置和内容数量后继续。'
-      : '',
+      : [{label: targetLabel, value: labels.unselected}],
+    warningText: input.overwriteExisting ? labels.overwriteWarning : '',
   };
 };

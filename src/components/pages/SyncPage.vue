@@ -1,5 +1,6 @@
 <script setup lang="ts">
   import {computed, nextTick, onMounted, ref, watch} from 'vue';
+  import {useI18n} from 'vue-i18n';
   import {
     ArrowPathIcon,
     ArrowRightIcon,
@@ -30,11 +31,13 @@
     WiseMindFolder,
     WiseMindSnapshot,
     WiseMindSourceItem,
+    WiseMindWorkspaceState,
   } from '../../types';
   import {scanVault} from '../../vaultScanner';
   import {loadWiseMindSources, resolveFolderPath} from '../../wisemindSourceScanner';
   import {runWiseMindToObsidianImport} from '../../wisemindToObsidianRunner';
   import WiseMindConnectionDialog from '../WiseMindConnectionDialog.vue';
+  import WmDialog from '../WmDialog.vue';
   import WmTooltip from '../WmTooltip.vue';
 
   const props = defineProps<{
@@ -58,6 +61,7 @@
   };
 
   const plugin = usePlugin();
+  const {t} = useI18n();
   const {connectionDialogOpen, ensureWiseMindConnected} = useWiseMindConnectionGuard();
   const direction = ref<Direction>('to-wisemind');
   const running = ref(false);
@@ -72,6 +76,7 @@
   const obsidianItems = ref<ObsidianSourceItem[]>([]);
   const wiseMindItems = ref<WiseMindSourceItem[]>([]);
   const snapshot = ref<WiseMindSnapshot | null>(null);
+  const workspaceState = ref<WiseMindWorkspaceState | null>(null);
   const selectedObsidian = ref(new Set<string>());
   const selectedWiseMind = ref(new Set<string>());
   const selectedDestinations = ref(new Set<string>());
@@ -81,7 +86,7 @@
       'obsidian:root',
       'dest:documents',
       'target:root',
-      'wisemind:documents:根目录',
+      `wisemind:documents:${t('syncPage.rootFolder')}`,
     ]),
   );
   const searchObsidian = ref('');
@@ -94,7 +99,12 @@
   const newFolderName = ref('');
   const planPickerOpen = ref(false);
   const savePlanOpen = ref(false);
+  const renamePlanOpen = ref(false);
+  const deletePlanOpen = ref(false);
   const pendingPlanName = ref('');
+  const pendingRenamePlanName = ref('');
+  const pendingRenamePlan = ref<SyncPlan | null>(null);
+  const pendingDeletePlan = ref<SyncPlan | null>(null);
   const settingsRevision = ref(0);
 
   const setDirection = (value: unknown) => {
@@ -116,11 +126,27 @@
     };
   });
 
+  const currentWiseMindWorkspaceName = computed(() => {
+    const activeId = workspaceState.value?.activeWorkspaceId;
+    if (!activeId) return t('syncPage.noWorkspace');
+    return workspaceState.value?.workspaces.find(item => item.id === activeId)?.name || activeId;
+  });
+
+  const wiseMindWorkspaceScopeText = computed(() =>
+    t('syncPage.currentWorkspaceScope', {name: currentWiseMindWorkspaceName.value}),
+  );
+
   const selectedHint = computed(() => {
     if (direction.value === 'to-wisemind') {
-      return `已选 ${selectedObsidian.value.size} 篇 Obsidian 笔记，目标：${selectedDestinations.value.size} 个目标`;
+      return t('syncPage.selectedToWiseMind', {
+        sourceCount: selectedObsidian.value.size,
+        targetCount: selectedDestinations.value.size,
+      });
     }
-    return `已选 ${selectedWiseMindForActiveCategory.value.length} 条 WiseMindAI 内容，目标：${selectedObsidianFolders.value.size} 个文件夹`;
+    return t('syncPage.selectedToObsidian', {
+      sourceCount: selectedWiseMindForActiveCategory.value.length,
+      targetCount: selectedObsidianFolders.value.size,
+    });
   });
 
   const selectedWiseMindForActiveCategory = computed(() =>
@@ -131,8 +157,39 @@
     ),
   );
 
+  const selectedGroupLabel = <T,>(items: T[], selected: Set<string>, keyOf: (item: T) => string) =>
+    t('notePicker.groupSelected', {
+      selected: items.filter(item => selected.has(keyOf(item))).length,
+      total: items.length,
+    });
+
+  const importRunnerLabels = () => ({
+    defaultKnowledgeBase: t('importRunner.defaultKnowledgeBase'),
+    note: t('importRunner.note'),
+    document: t('importRunner.document'),
+    knowledge: t('importRunner.knowledge'),
+    rootFolder: t('importRunner.rootFolder'),
+    noteUpdated: (target: string) => t('importRunner.noteUpdated', {target}),
+    noteCreated: (target: string) => t('importRunner.noteCreated', {target}),
+    documentUpdated: (target: string) => t('importRunner.documentUpdated', {target}),
+    documentCreated: (target: string) => t('importRunner.documentCreated', {target}),
+    knowledgeDesc: t('importRunner.knowledgeDesc'),
+    knowledgeUpdated: (target: string) => t('importRunner.knowledgeUpdated', {target}),
+    knowledgeCreated: (target: string) => t('importRunner.knowledgeCreated', {target}),
+    failed: t('importRunner.failed'),
+    failedTarget: t('importRunner.failedTarget'),
+  });
+
+  const obsidianWriterLabels = () => ({
+    unnamedKnowledge: t('obsidianWriter.unnamedKnowledge'),
+    skippedSameSource: t('obsidianWriter.skippedSameSource'),
+    syncFailed: t('obsidianWriter.syncFailed'),
+    failedTarget: t('obsidianWriter.failedTarget'),
+  });
+
   const fallbackSyncTarget = (history: SyncHistoryItem | null) =>
-    history?.targetLabel || (direction.value === 'to-wisemind' ? 'WiseMindAI' : 'Obsidian');
+    history?.targetLabel ||
+    (direction.value === 'to-wisemind' ? wiseMindWorkspaceScopeText.value : 'Obsidian');
 
   const syncResultRows = computed(() =>
     (result.value?.items || []).map(item => ({
@@ -143,16 +200,10 @@
     })),
   );
   const syncStatusLabels = {
-    created: '新建',
-    updated: '更新',
-    skipped: '跳过',
-    failed: '失败',
-  } as const;
-  const syncStatusBadgeClass = {
-    created: 'badge-success',
-    updated: 'badge-info',
-    skipped: 'badge-ghost',
-    failed: 'badge-error',
+    created: t('syncPage.created'),
+    updated: t('syncPage.updated'),
+    skipped: t('syncPage.skipped'),
+    failed: t('syncPage.failed'),
   } as const;
   const syncResultGroups = computed(() =>
     (['failed', 'created', 'updated', 'skipped'] as const)
@@ -190,9 +241,16 @@
   );
   const obsidianTargetFolders = computed(() =>
     getObsidianFolders().filter(folder =>
-      matchesSearch(folder || '根目录', searchObsidianFolder.value),
+      matchesSearch(folder || t('syncPage.rootFolder'), searchObsidianFolder.value),
     ),
   );
+  const wiseMindEmptyText = computed(() => {
+    if (loading.value) return t('syncPage.loadingWiseMind');
+    if (searchWiseMind.value.trim()) return t('syncPage.noMatchedWiseMind');
+    if (activeCategory.value === 'knowledge') return t('syncPage.noKnowledgeDocs');
+    if (activeCategory.value === 'notes') return t('syncPage.noWiseMindNotes');
+    return t('syncPage.noWiseMindDocuments');
+  });
   const sortedPlans = computed(
     () => (
       settingsRevision.value,
@@ -208,23 +266,30 @@
   );
   const currentPlanSummary = computed(() => [
     {
-      label: '同步方向',
+      label: t('syncPage.syncDirection'),
       values: [
-        direction.value === 'to-wisemind' ? 'Obsidian -> WiseMindAI' : 'WiseMindAI -> Obsidian',
+        direction.value === 'to-wisemind'
+          ? t('syncPage.toWiseMindDirection')
+          : t('syncPage.toObsidianDirection'),
       ],
       emptyText: '',
     },
     {
-      label: direction.value === 'to-wisemind' ? '已选择的内容' : '已选择的 WiseMindAI 内容',
+      label:
+        direction.value === 'to-wisemind'
+          ? t('syncPage.selectedContent')
+          : t('syncPage.selectedWiseMindContent'),
       values: [
         direction.value === 'to-wisemind'
-          ? `${selectedObsidian.value.size} 篇 Obsidian 笔记`
-          : `${selectedWiseMindForActiveCategory.value.length} 条内容`,
+          ? t('syncPage.obsidianNoteCount', {count: selectedObsidian.value.size})
+          : t('syncPage.wiseMindContentCount', {
+              count: selectedWiseMindForActiveCategory.value.length,
+            }),
       ],
-      emptyText: '未选择内容',
+      emptyText: t('syncPage.noSelectedContent'),
     },
     {
-      label: '来源文件夹',
+      label: t('syncPage.sourceFolder'),
       values:
         direction.value === 'to-wisemind'
           ? getFullySelectedGroupIds(
@@ -237,17 +302,20 @@
               selectedWiseMind.value,
               sourceKey,
             ).map(id => id.split(':').slice(2).join(':')),
-      emptyText: '未完整选择文件夹',
+      emptyText: t('syncPage.noFullFolder'),
     },
     {
-      label: direction.value === 'to-wisemind' ? '保存到' : '写入 Obsidian',
+      label:
+        direction.value === 'to-wisemind' ? t('syncPage.saveTo') : t('syncPage.writeToObsidian'),
       values:
         direction.value === 'to-wisemind'
           ? allDestinations()
               .filter(item => selectedDestinations.value.has(item.key))
               .map(item => item.title)
-          : Array.from(selectedObsidianFolders.value).map(folder => folder || '根目录'),
-      emptyText: '未选择目标',
+          : Array.from(selectedObsidianFolders.value).map(
+              folder => folder || t('syncPage.rootFolder'),
+            ),
+      emptyText: t('syncPage.noSelectedTarget'),
     },
   ]);
 
@@ -270,10 +338,11 @@
       hasLoadedObsidianItems.value = true;
       selectedObsidianFolders.value = new Set([plugin.settings.defaultObsidianRootFolder || '']);
     } catch (error: any) {
-      new Notice(error?.message || '扫描 Obsidian 仓库失败');
+      new Notice(error?.message || t('syncPage.scanObsidianFailed'));
     }
 
     try {
+      workspaceState.value = await plugin.api.getWorkspaceState().catch(() => null);
       const loaded = await loadWiseMindSources(plugin.api, {
         includeNotes: true,
         includeDocuments: true,
@@ -289,7 +358,7 @@
       selectedDestinations.value = new Set(getDefaultDestinationKeys(loaded.snapshot));
       applyDefaultPlan();
     } catch (error: any) {
-      connectionError.value = error?.message || '无法连接 WiseMindAI 本地接口';
+      connectionError.value = error?.message || t('syncPage.connectWiseMindFailed');
       snapshot.value = null;
       wiseMindItems.value = [];
       selectedWiseMind.value = new Set();
@@ -300,42 +369,56 @@
   };
 
   const buildCurrentSyncPreview = () =>
-    buildSyncPreview({
-      direction: direction.value,
-      sourceCount:
-        direction.value === 'to-wisemind'
-          ? selectedObsidian.value.size
-          : selectedWiseMindForActiveCategory.value.length,
-      targetLabels:
-        direction.value === 'to-wisemind'
-          ? allDestinations()
-              .filter(item => selectedDestinations.value.has(item.key))
-              .map(item => `${item.meta}：${item.title}`)
-          : Array.from(selectedObsidianFolders.value).map(folder => folder || '根目录'),
-      overwriteExisting:
-        direction.value === 'to-wisemind'
-          ? overwriteExisting.value
-          : plugin.settings.duplicatePolicy === 'update',
-    });
+    buildSyncPreview(
+      {
+        direction: direction.value,
+        sourceCount:
+          direction.value === 'to-wisemind'
+            ? selectedObsidian.value.size
+            : selectedWiseMindForActiveCategory.value.length,
+        targetLabels:
+          direction.value === 'to-wisemind'
+            ? allDestinations()
+                .filter(item => selectedDestinations.value.has(item.key))
+                .map(item => `${item.meta}: ${item.title}`)
+                .concat(wiseMindWorkspaceScopeText.value)
+            : Array.from(selectedObsidianFolders.value).map(
+                folder => folder || t('syncPage.rootFolder'),
+              ),
+        overwriteExisting:
+          direction.value === 'to-wisemind'
+            ? overwriteExisting.value
+            : plugin.settings.duplicatePolicy === 'update',
+      },
+      {
+        obsidianNotes: t('syncPreview.obsidianNotes'),
+        wiseMindContent: t('syncPreview.wiseMindContent'),
+        wiseMindTarget: t('syncPreview.wiseMindTarget'),
+        obsidianTarget: t('syncPreview.obsidianTarget'),
+        title: params => t('syncPreview.title', params),
+        unselected: t('syncPreview.unselected'),
+        overwriteWarning: t('syncPreview.overwriteWarning'),
+      },
+    );
 
   const prepareExecute = async () => {
     if (!(await ensureWiseMindConnected())) return;
     if (direction.value === 'to-wisemind') {
       if (!selectedObsidian.value.size) {
-        new Notice('请先选择要同步的 Obsidian 笔记');
+        new Notice(t('syncPage.chooseObsidianFirst'));
         return;
       }
       if (!selectedDestinations.value.size) {
-        new Notice('请先选择 WiseMindAI 目标');
+        new Notice(t('syncPage.chooseWiseMindTargetFirst'));
         return;
       }
     } else {
       if (!selectedWiseMindForActiveCategory.value.length) {
-        new Notice('请先选择要写回 Obsidian 的内容');
+        new Notice(t('syncPage.chooseWiseMindContentFirst'));
         return;
       }
       if (!selectedObsidianFolders.value.size) {
-        new Notice('请先选择 Obsidian 目标文件夹');
+        new Notice(t('syncPage.chooseObsidianFolderFirst'));
         return;
       }
     }
@@ -358,16 +441,16 @@
           selectedDestinations.value.has(item.key),
         );
         if (!items.length) {
-          new Notice('请先选择要同步的 Obsidian 笔记');
+          new Notice(t('syncPage.chooseObsidianFirst'));
           return;
         }
         if (!destinations.length) {
-          new Notice('请先选择 WiseMindAI 目标');
+          new Notice(t('syncPage.chooseWiseMindTargetFirst'));
           return;
         }
         upsertPluginTask({
           id: taskId,
-          title: '正在同步到 WiseMindAI',
+          title: t('syncPage.taskSyncToWiseMind'),
           status: 'running',
           total: items.length * Math.max(destinations.length, 1),
           completed: 0,
@@ -393,10 +476,11 @@
           duplicatePolicy: plugin.settings.duplicatePolicy,
           knowledgeBaseName: plugin.settings.contextMenuDefaults.knowledgeBaseName,
           chunkSize: plugin.settings.chunkSize,
+          labels: importRunnerLabels(),
           onProgress: progress =>
             upsertPluginTask({
               id: taskId,
-              title: '正在同步到 WiseMindAI',
+              title: t('syncPage.taskSyncToWiseMind'),
               status: 'running',
               total: items.length * Math.max(destinations.length, 1),
               completed: progress.items.length,
@@ -408,16 +492,16 @@
         );
         const folders = Array.from(selectedObsidianFolders.value);
         if (!items.length) {
-          new Notice('请先选择要写回 Obsidian 的内容');
+          new Notice(t('syncPage.chooseWiseMindContentFirst'));
           return;
         }
         if (!folders.length) {
-          new Notice('请先选择 Obsidian 目标文件夹');
+          new Notice(t('syncPage.chooseObsidianFolderFirst'));
           return;
         }
         upsertPluginTask({
           id: taskId,
-          title: '正在写回 Obsidian',
+          title: t('syncPage.taskWriteToObsidian'),
           status: 'running',
           total: items.length * Math.max(folders.length, 1),
           completed: 0,
@@ -430,10 +514,11 @@
           includeFolderStructure: includeFolderStructure.value,
           duplicatePolicy: plugin.settings.duplicatePolicy,
           chunkSize: plugin.settings.chunkSize,
+          labels: obsidianWriterLabels(),
           onProgress: progress =>
             upsertPluginTask({
               id: taskId,
-              title: '正在写回 Obsidian',
+              title: t('syncPage.taskWriteToObsidian'),
               status: 'running',
               total: items.length * Math.max(folders.length, 1),
               completed: progress.items.length,
@@ -444,26 +529,35 @@
       if (result.value) {
         upsertPluginTask({
           id: taskId,
-          title: '同步完成',
+          title: t('syncPage.taskCompleted'),
           status: result.value.failed ? 'failed' : 'completed',
           total: result.value.items.length,
           completed: result.value.items.length,
-          message: result.value.failed ? `${result.value.failed} 项失败` : '',
+          message: result.value.failed
+            ? t('syncPage.failedCount', {count: result.value.failed})
+            : '',
         });
         plugin.settings.syncHistory.unshift({
           id: `sync-${Date.now()}`,
           createdAt: Date.now(),
           direction: direction.value,
           sourceLabel:
-            direction.value === 'to-wisemind' ? 'Obsidian 当前仓库' : 'WiseMindAI 本地数据',
-          targetLabel: direction.value === 'to-wisemind' ? 'WiseMindAI' : 'Obsidian 当前仓库',
+            direction.value === 'to-wisemind'
+              ? t('syncPage.obsidianVault')
+              : t('syncPage.wiseMindLocalData'),
+          targetLabel:
+            direction.value === 'to-wisemind'
+              ? wiseMindWorkspaceScopeText.value
+              : t('syncPage.obsidianVault'),
           sourceFolders: [],
           targetFolders:
             direction.value === 'to-obsidian' ? Array.from(selectedObsidianFolders.value) : [],
           itemTitles: result.value.items.map(item => item.title),
           syncItems: result.value.items.map(item => ({
             title: item.title,
-            target: item.target || (direction.value === 'to-wisemind' ? 'WiseMindAI' : 'Obsidian'),
+            target:
+              item.target ||
+              (direction.value === 'to-wisemind' ? wiseMindWorkspaceScopeText.value : 'Obsidian'),
             status: item.status,
           })),
           created: result.value.created,
@@ -475,16 +569,16 @@
         await plugin.saveSettings();
         await nextTick();
         resultDialogOpen.value = true;
-        new Notice('同步完成');
+        new Notice(t('syncPage.taskCompleted'));
       }
     } catch (error: any) {
       upsertPluginTask({
         id: taskId,
-        title: '同步失败',
+        title: t('syncPage.taskFailed'),
         status: 'failed',
-        message: error?.message || '同步失败',
+        message: error?.message || t('syncPage.taskFailed'),
       });
-      new Notice(error?.message || '同步失败');
+      new Notice(error?.message || t('syncPage.taskFailed'));
     } finally {
       running.value = false;
     }
@@ -498,7 +592,7 @@
   const createObsidianFolder = async () => {
     const folder = newFolderName.value.trim().replace(/^\/+|\/+$/g, '');
     if (!folder) {
-      new Notice('请输入文件夹名称');
+      new Notice(t('syncPage.folderNameRequired'));
       return;
     }
     let current = '';
@@ -509,7 +603,7 @@
     }
     selectedObsidianFolders.value = new Set([...selectedObsidianFolders.value, folder]);
     newFolderName.value = '';
-    new Notice(`已选择文件夹：${folder}`);
+    new Notice(t('syncPage.folderSelected', {folder}));
   };
 
   const toggleSetValue = (setRef: typeof selectedObsidian, key: string, checked: boolean) => {
@@ -585,9 +679,9 @@
     (category === 'notes' && item.sourceType === 'note');
 
   const sourceTypeLabel = (value: WiseMindSourceItem['sourceType']) => {
-    if (value === 'document') return '文档';
-    if (value === 'knowledge-document') return '知识库';
-    return '笔记';
+    if (value === 'document') return t('syncPage.documents');
+    if (value === 'knowledge-document') return t('syncPage.knowledge');
+    return t('syncPage.notes');
   };
 
   const matchesSearch = (value: string, query: string) =>
@@ -601,7 +695,7 @@
     items
       .filter(item => matchesSearch(`${item.title} ${item.path}`, query))
       .forEach(item => {
-        const folder = item.folderPath || '根目录';
+        const folder = item.folderPath || t('syncPage.rootFolder');
         groups.set(folder, [...(groups.get(folder) || []), item]);
       });
     return Array.from(groups.entries()).map(([folder, groupItems]) => ({
@@ -624,8 +718,8 @@
       .forEach(item => {
         const group =
           category === 'knowledge'
-            ? item.knowledgeBaseName || '知识库'
-            : item.folderPath || '根目录';
+            ? item.knowledgeBaseName || t('syncPage.knowledge')
+            : item.folderPath || t('syncPage.rootFolder');
         groups.set(group, [...(groups.get(group) || []), item]);
       });
     return Array.from(groups.entries()).map(([title, groupItems]) => ({
@@ -640,32 +734,40 @@
     query: string,
   ): TreeGroup<DestinationItem>[] => {
     if (!data) return [];
-    const noteFolders = folderDestinations('notes', data.noteFolders || [], '根目录');
-    const docFolders = folderDestinations('documents', data.documentFolders || [], '根目录');
+    const noteFolders = folderDestinations(
+      'notes',
+      data.noteFolders || [],
+      t('syncPage.rootFolder'),
+    );
+    const docFolders = folderDestinations(
+      'documents',
+      data.documentFolders || [],
+      t('syncPage.rootFolder'),
+    );
     const knowledgeBases = (data.knowledgeBases || []).map((base: any) => ({
       key: `knowledge:${base.name || base.title || base.id}`,
       target: 'knowledge' as const,
       value: String(base.name || base.title || base.id || ''),
       title: String(base.name || base.title || `knowledge-${base.id}`),
-      meta: '知识库',
+      meta: t('syncPage.knowledge'),
     }));
     return [
       {
         id: 'dest:notes',
-        title: '笔记',
-        subtitle: `${noteFolders.length} 个文件夹`,
+        title: t('syncPage.notes'),
+        subtitle: t('syncPage.selectedFolders', {count: noteFolders.length}),
         items: noteFolders,
       },
       {
         id: 'dest:documents',
-        title: '文档',
-        subtitle: `${docFolders.length} 个文件夹`,
+        title: t('syncPage.documents'),
+        subtitle: t('syncPage.selectedFolders', {count: docFolders.length}),
         items: docFolders,
       },
       {
         id: 'dest:knowledge',
-        title: '知识库',
-        subtitle: `${knowledgeBases.length} 个知识库`,
+        title: t('syncPage.knowledge'),
+        subtitle: t('syncPage.knowledgeBasesCount', {count: knowledgeBases.length}),
         items: knowledgeBases,
       },
     ]
@@ -681,7 +783,7 @@
     folders: WiseMindFolder[],
     rootTitle: string,
   ): DestinationItem[] => [
-    {key: `${target}:`, target, value: '', title: rootTitle, meta: '根目录'},
+    {key: `${target}:`, target, value: '', title: rootTitle, meta: t('syncPage.rootFolder')},
     ...folders.map(folder => {
       const path = resolveFolderPath(folder.id, folders) || folder.name;
       return {
@@ -689,7 +791,7 @@
         target,
         value: path,
         title: path,
-        meta: '文件夹',
+        meta: t('syncPage.folder'),
       };
     }),
   ];
@@ -810,7 +912,7 @@
   };
 
   const openSavePlanDialog = () => {
-    pendingPlanName.value = activePlanName.value || '我的同步方案';
+    pendingPlanName.value = activePlanName.value || t('syncPage.defaultPlanName');
     savePlanOpen.value = true;
   };
 
@@ -823,7 +925,7 @@
     await plugin.saveSettings();
     touchSettings();
     savePlanOpen.value = false;
-    new Notice('同步方案已保存');
+    new Notice(t('syncPage.planSaved'));
   };
 
   const applyAndSetDefaultPlan = async (plan: SyncPlan) => {
@@ -832,40 +934,58 @@
     await plugin.saveSettings();
     touchSettings();
     planPickerOpen.value = false;
-    new Notice(`已套用同步方案：${plan.name}`);
+    new Notice(t('syncPage.planApplied', {name: plan.name}));
   };
 
-  const renamePlan = async (plan: SyncPlan) => {
-    const name = window.prompt('输入新的方案名称', plan.name)?.trim();
+  const openRenamePlanDialog = (plan: SyncPlan) => {
+    pendingRenamePlan.value = plan;
+    pendingRenamePlanName.value = plan.name;
+    renamePlanOpen.value = true;
+  };
+
+  const confirmRenamePlan = async () => {
+    const plan = pendingRenamePlan.value;
+    const name = pendingRenamePlanName.value.trim();
+    if (!plan) return;
     if (!name) return;
     plan.name = name;
     plan.updatedAt = Date.now();
     await plugin.saveSettings();
     touchSettings();
-    new Notice('同步方案已重命名');
+    renamePlanOpen.value = false;
+    pendingRenamePlan.value = null;
+    new Notice(t('syncPage.planRenamed'));
   };
 
   const setDefaultPlan = async (plan: SyncPlan) => {
     plugin.settings.defaultSyncPlanId = plan.id;
     await plugin.saveSettings();
     touchSettings();
-    new Notice('已设置为默认同步方案');
+    new Notice(t('syncPage.planDefaultSet'));
   };
 
-  const deletePlan = async (plan: SyncPlan) => {
-    if (!window.confirm(`确定删除同步方案「${plan.name}」吗？`)) return;
+  const openDeletePlanDialog = (plan: SyncPlan) => {
+    pendingDeletePlan.value = plan;
+    deletePlanOpen.value = true;
+  };
+
+  const confirmDeletePlan = async () => {
+    const plan = pendingDeletePlan.value;
+    if (!plan) return;
     plugin.settings.syncPlans = plugin.settings.syncPlans.filter(item => item.id !== plan.id);
     if (plugin.settings.defaultSyncPlanId === plan.id) plugin.settings.defaultSyncPlanId = '';
     await plugin.saveSettings();
     touchSettings();
-    new Notice('同步方案已删除');
+    deletePlanOpen.value = false;
+    pendingDeletePlan.value = null;
+    new Notice(t('syncPage.planDeleted'));
   };
 
   const clearDefaultPlan = async () => {
     plugin.settings.defaultSyncPlanId = '';
     await plugin.saveSettings();
     touchSettings();
-    new Notice('已取消选中同步方案');
+    new Notice(t('syncPage.planCleared'));
   };
 
   const openHistoryItem = (id?: string) => {
@@ -907,15 +1027,15 @@
     <header class="wm-page-header">
       <div class="wm-title-line">
         <ArrowPathIcon class="wm-title-icon" />
-        <h2>数据同步</h2>
+        <h2>{{ t('syncPage.title') }}</h2>
       </div>
       <div class="wm-toolbar">
-        <WmTooltip content="历史记录">
+        <WmTooltip :content="t('syncPage.history')">
           <button class="wm-icon-button" type="button" @click="emit('openHistory')">
             <ClockIcon class="wm-icon" />
           </button>
         </WmTooltip>
-        <WmTooltip content="刷新">
+        <WmTooltip :content="t('syncPage.refresh')">
           <button class="wm-icon-button" type="button" :disabled="loading" @click="refresh">
             <ArrowPathIcon class="wm-icon" />
           </button>
@@ -925,28 +1045,50 @@
 
     <div class="wm-sync-stats">
       <section class="wm-panel wm-sync-stat-card">
-        <h3>Obsidian 当前仓库</h3>
+        <h3>{{ t('syncPage.obsidianVault') }}</h3>
         <strong>{{ stats.obsidian }}</strong
-        ><span>篇笔记</span>
+        ><span>{{
+          t('syncPage.notesCount', {count: stats.obsidian})
+            .replace(String(stats.obsidian), '')
+            .trim()
+        }}</span>
       </section>
       <section class="wm-panel wm-sync-stat-card is-wide">
-        <h3>WiseMindAI 本地数据（仅 Markdown 文档）</h3>
+        <h3>{{ t('syncPage.wiseMindLocalDataMarkdown') }}</h3>
         <div>
           <span
             ><strong>{{ stats.notes }}</strong
-            >篇笔记</span
+            >{{
+              t('syncPage.notesCount', {count: stats.notes}).replace(String(stats.notes), '').trim()
+            }}</span
           >
           <span
             ><strong>{{ stats.documents }}</strong
-            >个文档</span
+            >{{
+              t('syncPage.documentsCount', {count: stats.documents})
+                .replace(String(stats.documents), '')
+                .trim()
+            }}</span
           >
           <span
             ><strong>{{ stats.knowledge }}</strong
-            >个知识库</span
+            >{{
+              t('syncPage.knowledgeBasesCount', {count: stats.knowledge})
+                .replace(String(stats.knowledge), '')
+                .trim()
+            }}</span
           >
         </div>
       </section>
     </div>
+
+    <section class="wm-sync-workspace-notice">
+      <CheckCircleIcon class="wm-icon" />
+      <div>
+        <strong>{{ wiseMindWorkspaceScopeText }}</strong>
+        <p>{{ t('syncPage.workspaceScopeDesc') }}</p>
+      </div>
+    </section>
 
     <ToggleGroupRoot
       :model-value="direction"
@@ -956,54 +1098,82 @@
     >
       <ToggleGroupItem value="to-wisemind">
         <ArrowPathIcon class="wm-icon" />
-        Obsidian -> WiseMindAI
+        {{ t('syncPage.toWiseMindDirection') }}
       </ToggleGroupItem>
       <ToggleGroupItem value="to-obsidian">
         <ArrowPathIcon class="wm-icon" />
-        WiseMindAI -> Obsidian
+        {{ t('syncPage.toObsidianDirection') }}
       </ToggleGroupItem>
     </ToggleGroupRoot>
 
     <section class="wm-panel wm-sync-plan-bar">
       <div class="wm-sync-plan-title">
-        <div class="wm-section-title">同步方案</div>
+        <div class="wm-section-title">{{ t('syncPage.syncPlan') }}</div>
       </div>
       <div class="wm-sync-plan-controls">
         <p class="wm:text-xs">{{
-          activePlanName ? `当前：${activePlanName}` : '可保存当前选择，下次直接套用。'
+          activePlanName
+            ? t('syncPage.currentPlan', {name: activePlanName})
+            : t('syncPage.planHint')
         }}</p>
         <div class="wm-actions">
           <button class="wm-button" type="button" @click="planPickerOpen = true">
             <BookmarkSquareIcon class="wm-icon" />
-            选择方案
+            {{ t('syncPage.choosePlan') }}
           </button>
           <button class="wm-button" type="button" @click="openSavePlanDialog">
             <PlusIcon class="wm-icon" />
-            保存新方案
+            {{ t('syncPage.saveNewPlan') }}
           </button>
           <button v-if="activePlanName" class="wm-button" type="button" @click="clearDefaultPlan">
-            取消选中方案
+            {{ t('syncPage.clearPlan') }}
           </button>
         </div>
       </div>
     </section>
 
-    <p class="wm-sync-hint">{{ selectedHint }}</p>
+    <div class="wm-sync-hint">
+      <p>{{ selectedHint }}</p>
+      <div class="wm-sync-footer">
+        <label v-if="direction === 'to-wisemind'">
+          <input v-model="overwriteExisting" type="checkbox" />
+          {{ t('syncPage.overwriteExisting') }}
+        </label>
+        <label v-else>
+          <input v-model="includeFolderStructure" type="checkbox" />
+          {{ t('syncPage.includeFolderStructure') }}
+        </label>
+        <button
+          class="wm-button is-primary"
+          type="button"
+          :disabled="running || loading"
+          @click="prepareExecute"
+        >
+          <span v-if="running" class="wm-loading-spinner"></span>
+          <ArrowPathIcon v-else class="wm-icon" />
+          {{ running ? t('syncPage.syncing') : t('syncPage.execute') }}
+        </button>
+      </div>
+    </div>
 
     <div v-if="direction === 'to-wisemind'" class="wm-sync-flow">
       <section class="wm-sync-list-card">
         <header>
           <div>
-            <h3>Obsidian 当前仓库</h3>
-            <p>选择要发送的 Markdown</p>
+            <h3>{{ t('syncPage.obsidianVault') }}</h3>
+            <p>{{ t('syncPage.chooseMarkdown') }}</p>
           </div>
-          <span>已选 {{ selectedObsidian.size }} 篇</span>
+          <span>{{ t('syncPage.selectedNotesShort', {count: selectedObsidian.size}) }}</span>
           <div class="wm-sync-header-actions">
-            <button class="wm-button" type="button" @click="selectAllObsidian">全选</button>
-            <button class="wm-button" type="button" @click="clearAllObsidian">清空</button>
+            <button class="wm-button" type="button" @click="selectAllObsidian">{{
+              t('syncPage.selectAll')
+            }}</button>
+            <button class="wm-button" type="button" @click="clearAllObsidian">{{
+              t('syncPage.clearAll')
+            }}</button>
           </div>
         </header>
-        <input v-model="searchObsidian" class="wm-input" placeholder="搜索文件夹或笔记" />
+        <input v-model="searchObsidian" class="wm-input" :placeholder="t('syncPage.searchNotes')" />
         <div class="wm-sync-list wm:p-2">
           <article v-for="group in obsidianGroups" :key="group.id" class="wm-sync-tree-group">
             <button class="wm-sync-tree-header" type="button" @click="toggleExpanded(group.id)">
@@ -1018,11 +1188,9 @@
                 @change="toggleObsidianGroup(group.items)"
               />
               <strong>{{ group.title }}</strong>
-              <span
-                >已选 {{ group.items.filter(item => selectedObsidian.has(item.path)).length }}/{{
-                  group.items.length
-                }}</span
-              >
+              <span>{{
+                selectedGroupLabel(group.items, selectedObsidian, item => item.path)
+              }}</span>
             </button>
             <div v-if="expandedGroups.has(group.id)" class="wm-sync-tree-children">
               <label v-for="item in group.items" :key="item.path" class="wm-sync-row">
@@ -1046,16 +1214,24 @@
       <section class="wm-sync-list-card">
         <header>
           <div>
-            <h3>保存到 WiseMindAI</h3>
-            <p>选择目标文件夹或知识库</p>
+            <h3>{{ t('syncPage.saveToWiseMind') }}</h3>
+            <p>{{ t('syncPage.chooseTarget') }}</p>
           </div>
-          <span>已选 {{ selectedDestinations.size }} 个目标</span>
+          <span>{{ t('syncPage.selectedTargets', {count: selectedDestinations.size}) }}</span>
           <div class="wm-sync-header-actions">
-            <button class="wm-button" type="button" @click="selectAllDestinations">全选</button>
-            <button class="wm-button" type="button" @click="clearAllDestinations">清空</button>
+            <button class="wm-button" type="button" @click="selectAllDestinations">{{
+              t('syncPage.selectAll')
+            }}</button>
+            <button class="wm-button" type="button" @click="clearAllDestinations">{{
+              t('syncPage.clearAll')
+            }}</button>
           </div>
         </header>
-        <input v-model="searchDestination" class="wm-input" placeholder="搜索目标" />
+        <input
+          v-model="searchDestination"
+          class="wm-input"
+          :placeholder="t('syncPage.searchTarget')"
+        />
         <div v-if="connectionError" class="wm-sync-empty">{{ connectionError }}</div>
         <div v-else class="wm-sync-list wm:p-2">
           <article v-for="group in destinationGroups" :key="group.id" class="wm-sync-tree-group">
@@ -1090,41 +1266,54 @@
       <section class="wm-sync-list-card">
         <header>
           <div>
-            <h3>WiseMindAI 本地数据</h3>
-            <p>选择要写回的内容</p>
+            <h3>{{ t('syncPage.wiseMindLocalData') }}</h3>
+            <p>{{ t('syncPage.chooseWriteBackContent') }}</p>
           </div>
-          <span>已选 {{ selectedWiseMindForActiveCategory.length }} 个</span>
+          <span>{{
+            t('syncPage.selectedItems', {count: selectedWiseMindForActiveCategory.length})
+          }}</span>
           <div class="wm-sync-header-actions">
-            <button class="wm-button" type="button" @click="selectAllWiseMind">全选</button>
-            <button class="wm-button" type="button" @click="clearAllWiseMind">清空</button>
+            <button class="wm-button" type="button" @click="selectAllWiseMind">{{
+              t('syncPage.selectAll')
+            }}</button>
+            <button class="wm-button" type="button" @click="clearAllWiseMind">{{
+              t('syncPage.clearAll')
+            }}</button>
           </div>
         </header>
-        <input v-model="searchWiseMind" class="wm-input" placeholder="搜索内容" />
+        <input
+          v-model="searchWiseMind"
+          class="wm-input"
+          :placeholder="t('syncPage.searchContent')"
+        />
         <div class="wm-sync-category-tabs">
           <button
             :class="{'is-active': activeCategory === 'documents'}"
             type="button"
             @click="activeCategory = 'documents'"
           >
-            <DocumentTextIcon class="wm-icon" /> 文档
+            <DocumentTextIcon class="wm-icon" /> {{ t('syncPage.documents') }}
           </button>
           <button
             :class="{'is-active': activeCategory === 'knowledge'}"
             type="button"
             @click="activeCategory = 'knowledge'"
           >
-            <BookmarkSquareIcon class="wm-icon" /> 知识库
+            <BookmarkSquareIcon class="wm-icon" /> {{ t('syncPage.knowledge') }}
           </button>
           <button
             :class="{'is-active': activeCategory === 'notes'}"
             type="button"
             @click="activeCategory = 'notes'"
           >
-            <DocumentTextIcon class="wm-icon" /> 笔记
+            <DocumentTextIcon class="wm-icon" /> {{ t('syncPage.notes') }}
           </button>
         </div>
         <div v-if="connectionError" class="wm-sync-empty">{{ connectionError }}</div>
         <div v-else class="wm-sync-list wm:p-2">
+          <div v-if="!wiseMindSourceGroups.length" class="wm-sync-empty">{{
+            wiseMindEmptyText
+          }}</div>
           <article v-for="group in wiseMindSourceGroups" :key="group.id" class="wm-sync-tree-group">
             <button class="wm-sync-tree-header" type="button" @click="toggleExpanded(group.id)">
               <component
@@ -1138,12 +1327,7 @@
                 @change="toggleWiseMindGroup(group.items)"
               />
               <strong>{{ group.title }}</strong>
-              <span
-                >已选
-                {{ group.items.filter(item => selectedWiseMind.has(sourceKey(item))).length }}/{{
-                  group.items.length
-                }}</span
-              >
+              <span>{{ selectedGroupLabel(group.items, selectedWiseMind, sourceKey) }}</span>
             </button>
             <div v-if="expandedGroups.has(group.id)" class="wm-sync-tree-children">
               <label v-for="item in group.items" :key="sourceKey(item)" class="wm-sync-row">
@@ -1171,25 +1355,33 @@
       <section class="wm-sync-list-card">
         <header>
           <div>
-            <h3>写入 Obsidian</h3>
-            <p>选择目标文件夹</p>
+            <h3>{{ t('syncPage.writeToObsidian') }}</h3>
+            <p>{{ t('syncPage.chooseTargetFolder') }}</p>
           </div>
-          <span>已选 {{ selectedObsidianFolders.size }} 个文件夹</span>
+          <span>{{ t('syncPage.selectedFolders', {count: selectedObsidianFolders.size}) }}</span>
           <div class="wm-sync-header-actions">
-            <button class="wm-button" type="button" @click="selectAllFolders">全选</button>
-            <button class="wm-button" type="button" @click="clearAllFolders">清空</button>
+            <button class="wm-button" type="button" @click="selectAllFolders">{{
+              t('syncPage.selectAll')
+            }}</button>
+            <button class="wm-button" type="button" @click="clearAllFolders">{{
+              t('syncPage.clearAll')
+            }}</button>
           </div>
         </header>
-        <input v-model="searchObsidianFolder" class="wm-input" placeholder="搜索 Obsidian 文件夹" />
+        <input
+          v-model="searchObsidianFolder"
+          class="wm-input"
+          :placeholder="t('syncPage.searchObsidianFolder')"
+        />
         <div class="wm-sync-create-row">
           <input
             v-model="newFolderName"
             class="wm-input"
-            placeholder="新建文件夹名称"
+            :placeholder="t('syncPage.newFolderPlaceholder')"
             @keydown.enter.prevent="createObsidianFolder"
           />
           <button class="wm-button" type="button" @click="createObsidianFolder">
-            <PlusIcon class="wm-icon" /> 创建
+            <PlusIcon class="wm-icon" /> {{ t('syncPage.create') }}
           </button>
         </div>
         <div class="wm-sync-list wm:p-2">
@@ -1199,139 +1391,114 @@
               :checked="selectedObsidianFolders.has(folder)"
               @change="toggleFolder(folder, ($event.target as HTMLInputElement).checked)"
             />
-            <span>{{ folder || '根目录' }}</span>
-            <small>{{ folder ? '文件夹' : '仓库根目录' }}</small>
+            <span>{{ folder || t('syncPage.rootFolder') }}</span>
+            <small>{{ folder ? t('syncPage.folder') : t('syncPage.vaultRoot') }}</small>
           </label>
         </div>
       </section>
     </div>
 
-    <footer class="wm-sync-footer">
-      <label v-if="direction === 'to-wisemind'">
-        <input v-model="overwriteExisting" type="checkbox" />
-        覆盖已有
-      </label>
-      <label v-else>
-        <input v-model="includeFolderStructure" type="checkbox" />
-        包含文件夹
-      </label>
-      <button
-        class="wm-button is-primary"
-        type="button"
-        :disabled="running || loading"
-        @click="prepareExecute"
-      >
-        <span v-if="running" class="wm-loading-spinner"></span>
-        <ArrowPathIcon v-else class="wm-icon" />
-        {{ running ? '同步中' : '执行同步' }}
-      </button>
-    </footer>
     <WiseMindConnectionDialog v-model:open="connectionDialogOpen" />
 
-    <div v-if="previewDialogOpen && pendingSyncPreview" class="modal modal-open">
-      <section class="modal-box relative" role="dialog" aria-modal="true" aria-label="同步预览">
-        <button
-          class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
-          type="button"
-          @click="previewDialogOpen = false"
-          >✕</button
-        >
-        <h3 class="text-lg font-bold">{{ pendingSyncPreview.title }}</h3>
-        <p class="mt-2 text-sm text-base-content/70">请确认来源数量和目标位置后再执行同步。</p>
-        <div class="mt-4 space-y-2">
-          <div
-            v-for="(row, index) in pendingSyncPreview.rows"
-            :key="`${row.label}:${row.value}:${index}`"
-            class="flex items-start justify-between gap-4 rounded-box bg-base-200 px-3 py-2 text-sm"
-          >
-            <span class="text-base-content/60">{{ row.label }}</span>
-            <strong class="text-right">{{ row.value }}</strong>
-          </div>
-        </div>
-        <div v-if="pendingSyncPreview.warningText" class="alert alert-warning mt-4">
-          <span>{{ pendingSyncPreview.warningText }}</span>
-        </div>
-        <footer class="modal-action">
-          <button class="wm-button" type="button" @click="previewDialogOpen = false">取消</button>
-          <button
-            class="wm-button is-primary"
-            type="button"
-            :disabled="running"
-            @click="confirmExecute"
-          >
-            <span v-if="running" class="loading loading-spinner loading-sm"></span>
-            确认同步
-          </button>
-        </footer>
-      </section>
-    </div>
-
-    <div
-      v-if="resultDialogOpen && result"
-      class="modal modal-open"
-      @click.self="resultDialogOpen = false"
+    <WmDialog
+      v-if="pendingSyncPreview"
+      v-model:open="previewDialogOpen"
+      :title="pendingSyncPreview.title"
+      :description="t('syncPage.previewDescription')"
+      content-class="wm-sync-preview-dialog"
     >
-      <section
-        class="modal-box relative wm-sync-result-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="同步结果"
-      >
-        <button
-          class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
-          type="button"
-          @click="resultDialogOpen = false"
-          >✕</button
+      <div class="wm-sync-preview-list">
+        <div
+          v-for="(row, index) in pendingSyncPreview.rows"
+          :key="`${row.label}:${row.value}:${index}`"
+          class="wm-sync-preview-row"
         >
-        <h3 class="wm-dialog-title">同步明细</h3>
-        <p class="wm-muted">
-          新建 {{ result.created }} / 更新 {{ result.updated }} / 跳过 {{ result.skipped }} / 失败
-          {{ result.failed }}
-        </p>
-        <div class="space-y-4">
-          <section v-for="group in syncResultGroups" :key="group.status" class="space-y-2">
-            <h4 class="flex items-center gap-2 text-sm font-semibold">
-              <span class="badge" :class="syncStatusBadgeClass[group.status]">{{
-                group.label
-              }}</span>
-              <span>{{ group.rows.length }} 项</span>
-            </h4>
-            <div class="wm-sync-detail-list">
-              <div
-                v-for="(item, index) in group.rows"
-                :key="`${group.status}:${item.title}:${index}`"
-                class="wm-sync-detail-row"
-              >
-                <strong>{{ item.title }}</strong>
-                <ArrowRightIcon class="wm-icon" />
-                <span>{{ item.target }}</span>
-                <small v-if="item.message">{{ item.message }}</small>
-              </div>
-            </div>
-          </section>
+          <span>{{ row.label }}</span>
+          <strong>{{ row.value }}</strong>
         </div>
-        <footer class="modal-action">
-          <button class="wm-button" type="button" @click="resultDialogOpen = false">关闭</button>
-          <button
-            v-if="result.failed"
-            class="wm-button is-primary"
-            type="button"
-            :disabled="running"
-            @click="
-              resultDialogOpen = false;
-              prepareExecute();
-            "
-          >
-            重试同步
-          </button>
-        </footer>
-      </section>
-    </div>
+      </div>
+      <div v-if="pendingSyncPreview.warningText" class="wm-sync-warning">
+        {{ pendingSyncPreview.warningText }}
+      </div>
+      <footer class="wm-dialog-actions">
+        <button class="wm-button" type="button" @click="previewDialogOpen = false">{{
+          t('syncPage.cancel')
+        }}</button>
+        <button
+          class="wm-button is-primary"
+          type="button"
+          :disabled="running"
+          @click="confirmExecute"
+        >
+          <span v-if="running" class="wm-loading-spinner"></span>
+          {{ t('syncPage.confirmSync') }}
+        </button>
+      </footer>
+    </WmDialog>
+
+    <WmDialog
+      v-if="result"
+      v-model:open="resultDialogOpen"
+      :title="t('syncPage.resultTitle')"
+      content-class="wm-sync-result-dialog"
+    >
+      <div class="wm-sync-result-summary">
+        <span
+          >{{ t('syncPage.created') }} <strong>{{ result.created }}</strong></span
+        >
+        <span
+          >{{ t('syncPage.updated') }} <strong>{{ result.updated }}</strong></span
+        >
+        <span
+          >{{ t('syncPage.skipped') }} <strong>{{ result.skipped }}</strong></span
+        >
+        <span :class="{'is-error': result.failed}"
+          >{{ t('syncPage.failed') }} <strong>{{ result.failed }}</strong></span
+        >
+      </div>
+      <div class="wm-sync-result-groups">
+        <section v-for="group in syncResultGroups" :key="group.status" class="wm-sync-result-group">
+          <h4>{{ group.label }}（{{ group.rows.length }}）</h4>
+          <div class="wm-sync-detail-list">
+            <div
+              v-for="(item, index) in group.rows"
+              :key="`${group.status}:${item.title}:${index}`"
+              class="wm-sync-detail-row"
+            >
+              <strong>{{ item.title }}</strong>
+              <ArrowRightIcon class="wm-icon" />
+              <span>{{ item.target }}</span>
+              <small v-if="item.message">{{ item.message }}</small>
+            </div>
+          </div>
+        </section>
+        <div v-if="!syncResultGroups.length" class="wm-sync-empty">{{
+          t('syncPage.noSyncDetails')
+        }}</div>
+      </div>
+      <footer class="wm-dialog-actions">
+        <button class="wm-button" type="button" @click="resultDialogOpen = false">{{
+          t('syncPage.close')
+        }}</button>
+        <button
+          v-if="result.failed"
+          class="wm-button is-primary"
+          type="button"
+          :disabled="running"
+          @click="
+            resultDialogOpen = false;
+            prepareExecute();
+          "
+        >
+          {{ t('syncPage.retry') }}
+        </button>
+      </footer>
+    </WmDialog>
 
     <section v-if="selectedSyncHistory" class="wm-panel wm-sync-history-preview">
       <div class="wm-panel-title">
         <ClockIcon class="wm-panel-title-icon" />
-        <h3>历史同步内容</h3>
+        <h3>{{ t('syncPage.historyContentTitle') }}</h3>
       </div>
       <p class="wm-muted"
         >{{ selectedSyncHistory.sourceLabel }} -> {{ selectedSyncHistory.targetLabel }}</p
@@ -1349,101 +1516,128 @@
       </div>
     </section>
 
-    <div v-if="planPickerOpen" class="modal modal-open wm-plan-modal">
-      <section
-        class="modal-box relative wm-plan-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="选择同步方案"
-      >
-        <button
-          class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
-          type="button"
-          @click="planPickerOpen = false"
-          >✕</button
-        >
-        <h3 class="wm-dialog-title">选择同步方案</h3>
-        <div v-if="!sortedPlans.length" class="wm-sync-empty">还没有保存过同步方案。</div>
-        <div v-else class="wm-plan-list">
-          <article v-for="plan in sortedPlans" :key="plan.id" class="wm-plan-row">
-            <div class="wm-plan-row-main">
-              <strong>{{ plan.name }}</strong>
-              <span>{{
-                plan.direction === 'to-wisemind'
-                  ? 'Obsidian -> WiseMindAI'
-                  : 'WiseMindAI -> Obsidian'
-              }}</span>
-              <em v-if="plan.id === plugin.settings.defaultSyncPlanId">默认</em>
-            </div>
-            <div class="wm-plan-row-actions">
-              <WmTooltip content="应用">
-                <button class="wm-icon-button" type="button" @click="applyAndSetDefaultPlan(plan)">
-                  <CheckCircleIcon class="wm-icon" />
-                </button>
-              </WmTooltip>
-              <WmTooltip content="重命名">
-                <button class="wm-icon-button" type="button" @click="renamePlan(plan)">
-                  <PencilSquareIcon class="wm-icon" />
-                </button>
-              </WmTooltip>
-              <WmTooltip v-if="plan.id !== plugin.settings.defaultSyncPlanId" content="设为默认">
-                <button class="wm-icon-button" type="button" @click="setDefaultPlan(plan)">
-                  <BookmarkSquareIcon class="wm-icon" />
-                </button>
-              </WmTooltip>
-              <WmTooltip content="删除">
-                <button class="wm-icon-button" type="button" @click="deletePlan(plan)">
-                  <TrashIcon class="wm-icon" />
-                </button>
-              </WmTooltip>
-            </div>
-          </article>
-        </div>
-      </section>
-    </div>
+    <WmDialog
+      v-model:open="planPickerOpen"
+      :title="t('syncPage.choosePlan')"
+      content-class="wm-plan-dialog"
+    >
+      <div v-if="!sortedPlans.length" class="wm-sync-empty">{{ t('syncPage.noPlans') }}</div>
+      <div v-else class="wm-plan-list">
+        <article v-for="plan in sortedPlans" :key="plan.id" class="wm-plan-row">
+          <div class="wm-plan-row-main">
+            <strong>{{ plan.name }}</strong>
+            <span>{{
+              plan.direction === 'to-wisemind'
+                ? t('syncPage.toWiseMindDirection')
+                : t('syncPage.toObsidianDirection')
+            }}</span>
+            <em v-if="plan.id === plugin.settings.defaultSyncPlanId">{{
+              t('syncPage.defaultPlan')
+            }}</em>
+          </div>
+          <div class="wm-plan-row-actions">
+            <WmTooltip :content="t('syncPage.apply')">
+              <button class="wm-icon-button" type="button" @click="applyAndSetDefaultPlan(plan)">
+                <CheckCircleIcon class="wm-icon" />
+              </button>
+            </WmTooltip>
+            <WmTooltip :content="t('syncPage.rename')">
+              <button class="wm-icon-button" type="button" @click="openRenamePlanDialog(plan)">
+                <PencilSquareIcon class="wm-icon" />
+              </button>
+            </WmTooltip>
+            <WmTooltip
+              v-if="plan.id !== plugin.settings.defaultSyncPlanId"
+              :content="t('syncPage.setDefault')"
+            >
+              <button class="wm-icon-button" type="button" @click="setDefaultPlan(plan)">
+                <BookmarkSquareIcon class="wm-icon" />
+              </button>
+            </WmTooltip>
+            <WmTooltip :content="t('syncPage.delete')">
+              <button class="wm-icon-button" type="button" @click="openDeletePlanDialog(plan)">
+                <TrashIcon class="wm-icon" />
+              </button>
+            </WmTooltip>
+          </div>
+        </article>
+      </div>
+    </WmDialog>
 
-    <div v-if="savePlanOpen" class="modal modal-open wm-plan-modal">
-      <section
-        class="modal-box relative wm-plan-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="保存新方案"
-      >
-        <button
-          class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
-          type="button"
-          @click="savePlanOpen = false"
-          >✕</button
-        >
-        <h3 class="wm-dialog-title">保存新方案</h3>
-        <div class="wm-plan-summary">
-          <div v-for="item in currentPlanSummary" :key="item.label" class="wm-plan-summary-row">
-            <span>{{ item.label }}</span>
-            <div>
-              <em
-                v-for="value in item.values.length ? item.values : [item.emptyText]"
-                :key="value"
-                >{{ value }}</em
-              >
-            </div>
+    <WmDialog
+      v-model:open="savePlanOpen"
+      :title="t('syncPage.saveNewPlan')"
+      content-class="wm-plan-dialog"
+    >
+      <div class="wm-plan-summary">
+        <div v-for="item in currentPlanSummary" :key="item.label" class="wm-plan-summary-row">
+          <span>{{ item.label }}</span>
+          <div>
+            <em v-for="value in item.values.length ? item.values : [item.emptyText]" :key="value">{{
+              value
+            }}</em>
           </div>
         </div>
-        <div class="wm-plan-summary-input">
-          <span class="title">方案名称：</span>
-          <input
-            v-model="pendingPlanName"
-            class="wm-input wm-plan-name-input"
-            placeholder="方案名称"
-            @keydown.enter.prevent="saveCurrentAsPlan"
-          />
-        </div>
-        <footer class="wm-dialog-actions">
-          <button class="wm-button" type="button" @click="savePlanOpen = false">取消</button>
-          <button class="wm-button is-primary" type="button" @click="saveCurrentAsPlan"
-            >保存</button
-          >
-        </footer>
-      </section>
-    </div>
+      </div>
+      <div class="wm-plan-summary-input">
+        <span class="title">{{ t('syncPage.planNameLabel') }}</span>
+        <input
+          v-model="pendingPlanName"
+          class="wm-input wm-plan-name-input"
+          :placeholder="t('syncPage.planNamePlaceholder')"
+          @keydown.enter.prevent="saveCurrentAsPlan"
+        />
+      </div>
+      <footer class="wm-dialog-actions">
+        <button class="wm-button" type="button" @click="savePlanOpen = false">{{
+          t('syncPage.cancel')
+        }}</button>
+        <button class="wm-button is-primary" type="button" @click="saveCurrentAsPlan">{{
+          t('syncPage.save')
+        }}</button>
+      </footer>
+    </WmDialog>
+
+    <WmDialog
+      v-model:open="renamePlanOpen"
+      :title="t('syncPage.renamePlanTitle')"
+      content-class="wm-plan-dialog"
+    >
+      <div class="wm-plan-summary-input">
+        <span class="title">{{ t('syncPage.planNameLabel') }}</span>
+        <input
+          v-model="pendingRenamePlanName"
+          class="wm-input wm-plan-name-input"
+          :placeholder="t('syncPage.planNamePlaceholder')"
+          @keydown.enter.prevent="confirmRenamePlan"
+        />
+      </div>
+      <footer class="wm-dialog-actions">
+        <button class="wm-button" type="button" @click="renamePlanOpen = false">{{
+          t('syncPage.cancel')
+        }}</button>
+        <button class="wm-button is-primary" type="button" @click="confirmRenamePlan">{{
+          t('syncPage.save')
+        }}</button>
+      </footer>
+    </WmDialog>
+
+    <WmDialog
+      v-model:open="deletePlanOpen"
+      :title="t('syncPage.deletePlanTitle')"
+      content-class="wm-plan-dialog"
+    >
+      <p class="wm-dialog-description">
+        {{ t('syncPage.deletePlanConfirm', {name: pendingDeletePlan?.name || ''}) }}
+      </p>
+      <footer class="wm-dialog-actions">
+        <button class="wm-button" type="button" @click="deletePlanOpen = false">{{
+          t('syncPage.cancel')
+        }}</button>
+        <button class="wm-button is-danger" type="button" @click="confirmDeletePlan">{{
+          t('syncPage.delete')
+        }}</button>
+      </footer>
+    </WmDialog>
   </section>
 </template>

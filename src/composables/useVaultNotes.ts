@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue';
+import {useI18n} from 'vue-i18n';
 import { Notice } from 'obsidian';
 
 import type { ObsidianSourceItem } from '../types';
@@ -8,6 +9,7 @@ import { usePlugin } from './usePlugin';
 
 export const useVaultNotes = () => {
   const plugin = usePlugin();
+  const {t} = useI18n();
   const notes = ref<ObsidianSourceItem[]>([]);
   const loading = ref(false);
   const query = ref('');
@@ -26,7 +28,7 @@ export const useVaultNotes = () => {
         ignorePatterns: plugin.settings.ignorePatterns,
       });
     } catch (error: any) {
-      new Notice(error?.message || '读取 Obsidian 笔记失败');
+      new Notice(error?.message || t('obsidianMessages.loadVaultNotesFailed'));
     } finally {
       loading.value = false;
     }

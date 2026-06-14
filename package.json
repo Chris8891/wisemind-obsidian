@@ -1,6 +1,6 @@
 {
   "name": "wisemindai-obsidian",
-  "version": "0.1.4",
+  "version": "1.2.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@heroicons/vue": "^2.2.0",
+    "markstream-vue": "1.0.0",
     "reka-ui": "^2.9.7",
     "vue": "3.5.34",
     "vue-i18n": "^9.14.5"

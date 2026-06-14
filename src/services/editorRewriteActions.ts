@@ -1,18 +1,31 @@
 export type EditorRewriteAction = 'rewrite' | 'expand' | 'shorten' | 'polish' | 'tags';
+export type EditorRewriteLabels = Record<EditorRewriteAction, string>;
 
-export const rewriteActionLabel = (action: EditorRewriteAction) => {
-  if (action === 'expand') return '扩写';
-  if (action === 'shorten') return '精简';
-  if (action === 'polish') return '润色';
-  if (action === 'tags') return '生成标签';
-  return '改写';
+export const defaultEditorRewriteLabels: EditorRewriteLabels = {
+  rewrite: 'Rewrite',
+  expand: 'Expand',
+  shorten: 'Shorten',
+  polish: 'Polish',
+  tags: 'Generate tags',
 };
 
-export const rewriteActionCommandName = (action: EditorRewriteAction) =>
-  `WiseMindAI: ${rewriteActionLabel(action)}选中文本`;
+export const rewriteActionLabel = (
+  action: EditorRewriteAction,
+  labels: EditorRewriteLabels = defaultEditorRewriteLabels,
+) => labels[action];
 
-export const formatRewriteResult = (action: EditorRewriteAction, original: string, result: string) => {
-  const label = rewriteActionLabel(action);
+export const rewriteActionCommandName = (
+  action: EditorRewriteAction,
+  labels: EditorRewriteLabels = defaultEditorRewriteLabels,
+) => `WiseMindAI: ${rewriteActionLabel(action, labels)} selected text`;
+
+export const formatRewriteResult = (
+  action: EditorRewriteAction,
+  original: string,
+  result: string,
+  labels: EditorRewriteLabels = defaultEditorRewriteLabels,
+) => {
+  const label = rewriteActionLabel(action, labels);
   if (action === 'tags') return `${original}\n\n${result.trim()}\n`;
   return `${original}\n\n> [!note] WiseMindAI ${label}\n> ${result.trim().replace(/\n/g, '\n> ')}\n`;
 };

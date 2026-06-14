@@ -1,4 +1,5 @@
 <script setup lang="ts">
+  import {useI18n} from 'vue-i18n';
   import {ArrowTopRightOnSquareIcon, DocumentTextIcon, XMarkIcon} from '@heroicons/vue/24/outline';
 
   import {usePlugin} from '../composables/usePlugin';
@@ -19,9 +20,13 @@
   }>();
 
   const plugin = usePlugin();
+  const {t} = useI18n();
 
   const openNote = (path: string) => {
-    void openObsidianNote(plugin.app, path);
+    void openObsidianNote(plugin.app, path, {
+      moved: t('obsidianMessages.noteMoved'),
+      openFailed: t('obsidianMessages.noteOpenFailed'),
+    });
   };
 </script>
 
@@ -30,8 +35,8 @@
     <span class="wm-source-note-chip">
       <DocumentTextIcon class="wm-icon" />
       <span>{{ currentPath }}</span>
-      <WmTooltip content="打开笔记">
-        <button class="wm-chip-button" type="button" @click="openNote(currentPath)">
+      <WmTooltip :content="t('sourceNotes.openNote')">
+        <button class="wm-icon-button" type="button" @click="openNote(currentPath)">
           <ArrowTopRightOnSquareIcon class="wm-icon" />
         </button>
       </WmTooltip>
@@ -43,13 +48,13 @@
       <span class="wm-source-note-chip">
         <DocumentTextIcon class="wm-icon" />
         <span>{{ note.path }}</span>
-        <WmTooltip content="打开笔记">
-          <button class="wm-chip-button" type="button" @click="openNote(note.path)">
+        <WmTooltip :content="t('sourceNotes.openNote')">
+          <button class="wm-icon-button" type="button" @click="openNote(note.path)">
             <ArrowTopRightOnSquareIcon class="wm-icon" />
           </button>
         </WmTooltip>
-        <WmTooltip content="移除">
-          <button class="wm-chip-button" type="button" @click="emit('remove', note.path)">
+        <WmTooltip :content="t('sourceNotes.remove')">
+          <button class="wm-icon-button" type="button" @click="emit('remove', note.path)">
             <XMarkIcon class="wm-icon" />
           </button>
         </WmTooltip>

@@ -25,19 +25,59 @@ export type TaskHistoryEntry = {
   raw: AssistantSummaryHistoryItem | AssistantCardHistoryItem | AssistantChatSession | SyncHistoryItem;
 };
 
+export type TaskHistoryLabels = {
+  all: string;
+  summary: string;
+  cards: string;
+  chat: string;
+  sync: string;
+  summaryTask: string;
+  cardsTask: string;
+  chatTask: string;
+  syncTask: string;
+  summaryTitle: string;
+  cardsTitle: string;
+  cardCount: (count: number) => string;
+  chatTitle: string;
+  messageCount: (count: number) => string;
+  syncDescription: (item: Pick<SyncHistoryItem, 'created' | 'updated' | 'skipped' | 'failed'>) => string;
+};
+
+export const defaultTaskHistoryLabels: TaskHistoryLabels = {
+  all: 'All',
+  summary: 'Summary',
+  cards: 'Knowledge cards',
+  chat: 'AI chat',
+  sync: 'Sync',
+  summaryTask: 'Summary task',
+  cardsTask: 'Knowledge cards',
+  chatTask: 'AI chat',
+  syncTask: 'Sync task',
+  summaryTitle: 'Document summary',
+  cardsTitle: 'Knowledge cards',
+  cardCount: count => `${count} cards`,
+  chatTitle: 'AI chat',
+  messageCount: count => `${count} messages`,
+  syncDescription: item =>
+    `Created ${item.created} / updated ${item.updated} / skipped ${item.skipped} / failed ${item.failed}`,
+};
+
 export const taskTypeOptions: Array<{value: TaskHistoryType; label: string}> = [
-  {value: 'all', label: '全部'},
-  {value: 'summary', label: '总结'},
-  {value: 'cards', label: '知识卡片'},
-  {value: 'chat', label: 'AI 对话'},
-  {value: 'sync', label: '同步'},
+  {value: 'all', label: defaultTaskHistoryLabels.all},
+  {value: 'summary', label: defaultTaskHistoryLabels.summary},
+  {value: 'cards', label: defaultTaskHistoryLabels.cards},
+  {value: 'chat', label: defaultTaskHistoryLabels.chat},
+  {value: 'sync', label: defaultTaskHistoryLabels.sync},
 ];
 
-export const taskTypeLabel = (type: TaskHistoryTarget) => {
-  if (type === 'summary') return '总结任务';
-  if (type === 'cards') return '知识卡片';
-  if (type === 'chat') return 'AI 对话';
-  return '同步任务';
+export const taskTypeLabel = (
+  type: TaskHistoryTarget,
+  labels: TaskHistoryLabels = defaultTaskHistoryLabels,
+) => {
+  if (type === 'summary') return labels.summaryTask;
+  if (type === 'cards') return labels.cardsTask;
+  if (type === 'chat') return labels.chatTask;
+  return labels.syncTask;
 };
 
 export const taskTargetPage = (type: TaskHistoryTarget) => {
@@ -47,13 +87,16 @@ export const taskTargetPage = (type: TaskHistoryTarget) => {
   return 'sync';
 };
 
-export const buildTaskHistory = (settings: WiseMindImportSettings): TaskHistoryEntry[] =>
+export const buildTaskHistory = (
+  settings: WiseMindImportSettings,
+  labels: TaskHistoryLabels = defaultTaskHistoryLabels,
+): TaskHistoryEntry[] =>
   [
     ...(settings.assistantSummaryHistory ?? []).map(item => ({
       id: item.id,
       type: 'summary' as const,
-      title: item.sourceTitle || item.title || '文档总结',
-      description: item.sourceTitle || item.sourcePath || '总结任务',
+      title: item.sourceTitle || item.title || labels.summaryTitle,
+      description: item.sourceTitle || item.sourcePath || labels.summaryTask,
       content: `${item.title || ''} ${item.markdown || ''} ${(item.tags || []).join(' ')}`,
       createdAt: item.createdAt,
       raw: item,
@@ -61,8 +104,8 @@ export const buildTaskHistory = (settings: WiseMindImportSettings): TaskHistoryE
     ...(settings.assistantCardHistory ?? []).map(item => ({
       id: item.id,
       type: 'cards' as const,
-      title: item.title || item.sourceTitle || '知识卡片',
-      description: `${item.cards?.length || 0} 张卡片`,
+      title: item.title || item.sourceTitle || labels.cardsTitle,
+      description: labels.cardCount(item.cards?.length || 0),
       content: `${item.title || ''} ${item.sourceTitle || ''} ${(item.cards || [])
         .map(card => `${card.content} ${(card.tags || []).join(' ')}`)
         .join(' ')}`,
@@ -74,8 +117,8 @@ export const buildTaskHistory = (settings: WiseMindImportSettings): TaskHistoryE
       .map(item => ({
         id: item.id,
         type: 'chat' as const,
-        title: item.title || 'AI 对话',
-        description: item.contextPath || `${item.messages?.length || 0} 条消息`,
+        title: item.title || labels.chatTitle,
+        description: item.contextPath || labels.messageCount(item.messages?.length || 0),
         content: `${item.title || ''} ${item.contextPath || ''} ${(item.messages || [])
           .map(message => message.content)
           .join(' ')}`,
@@ -86,7 +129,7 @@ export const buildTaskHistory = (settings: WiseMindImportSettings): TaskHistoryE
       id: item.id,
       type: 'sync' as const,
       title: `${item.sourceLabel} -> ${item.targetLabel}`,
-      description: `新建 ${item.created} / 更新 ${item.updated} / 跳过 ${item.skipped} / 失败 ${item.failed}`,
+      description: labels.syncDescription(item),
       content: `${item.sourceLabel} ${item.targetLabel} ${(item.itemTitles || []).join(' ')} ${(item.syncItems || [])
         .map(detail => `${detail.title} ${detail.target}`)
         .join(' ')}`,

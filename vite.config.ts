@@ -8,11 +8,19 @@ const syncObsidian = process.env.WISEMIND_OBSIDIAN_SYNC === '1';
 const syncPluginDir =
   process.env.WISEMIND_OBSIDIAN_PLUGIN_DIR ??
   '/Users/wangpingan/leo/obsidian_lib/.obsidian/plugins/wisemindai';
-const syncFiles = ['main.js', 'styles.css', 'manifest.json', 'versions.json'];
+const syncBuiltFiles = ['main.js', 'styles.css'];
+const syncStaticFiles = ['manifest.json', 'versions.json'];
 
 const syncToObsidian = async () => {
   await mkdir(syncPluginDir, { recursive: true });
-  await Promise.all(syncFiles.map(file => copyFile(join('dist', file), join(syncPluginDir, file))));
+  await mkdir('dist', { recursive: true });
+  await Promise.all([
+    ...syncBuiltFiles.map(file => copyFile(join('dist', file), join(syncPluginDir, file))),
+    ...syncStaticFiles.flatMap(file => [
+      copyFile(file, join('dist', file)),
+      copyFile(file, join(syncPluginDir, file)),
+    ]),
+  ]);
   const manifestPath = join(syncPluginDir, 'manifest.json');
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   const pluginDirName = basename(syncPluginDir);
@@ -47,7 +55,7 @@ export default defineConfig({
   },
   build: {
     sourcemap: false,
-    emptyOutDir: false,
+    emptyOutDir: true,
     lib: {
       entry: 'src/main.ts',
       formats: ['cjs'],
@@ -57,6 +65,7 @@ export default defineConfig({
       external: ['obsidian', 'node:fs/promises'],
       output: {
         exports: 'default',
+        inlineDynamicImports: true,
         assetFileNames: assetInfo => assetInfo.name === 'style.css' ? 'styles.css' : '[name][extname]',
       },
     },

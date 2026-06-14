@@ -8,23 +8,26 @@
     ChevronRightIcon,
     Cog6ToothIcon,
     DocumentTextIcon,
-    MagnifyingGlassIcon,
-    SparklesIcon,
+    LinkIcon,
   } from '@heroicons/vue/24/outline';
 
   import wiseMindLogoIcon from '../../assets/icons/wisemindai-logo.svg?raw';
   import {usePlugin} from '../../composables/usePlugin';
+  import {useVaultNotes} from '../../composables/useVaultNotes';
   import {filterTasksForPath} from '../../services/currentNoteWorkspace';
   import {
     buildTaskHistory,
     type TaskHistoryEntry,
+    type TaskHistoryLabels,
     type TaskHistoryType,
     WISEMIND_TASK_HISTORY_UPDATED_EVENT,
   } from '../../services/taskHistory';
-  import RekaSelect from '../RekaSelect.vue';
 
   const emit = defineEmits<{
     open: ['summary' | 'cards' | 'chat' | 'sync' | 'search'];
+    openChat: [message: string, autoSend?: boolean, newSession?: boolean];
+    summarizeCurrent: [];
+    searchCurrent: [keyword: string];
     openHistory: [type: TaskHistoryType];
     openTask: [task: TaskHistoryEntry];
     openSettings: [];
@@ -32,101 +35,102 @@
 
   const plugin = usePlugin();
   const {t, locale} = useI18n();
+  const {notes, refresh: refreshVaultNotes} = useVaultNotes();
   const connected = ref(false);
   const reconnecting = ref(false);
-  const taskFilter = ref<TaskHistoryType>('all');
   const historyRevision = ref(0);
   const activeFile = ref(plugin.app.workspace.getActiveFile());
+  const chatDraft = ref('');
   const workspaceEventRefs: unknown[] = [];
 
   const activePath = computed(() => activeFile.value?.path || '');
+  const hasActiveMarkdown = computed(() => Boolean(activePath.value));
   const activeTitle = computed(() => activeFile.value?.basename || t('home.noOpenMarkdown'));
+  const activeFolder = computed(() =>
+    activePath.value.includes('/') ? activePath.value.split('/').slice(0, -1).join('/') : '',
+  );
+  const activeNote = computed(() => notes.value.find(note => note.path === activePath.value));
+  const activeTags = computed(() => activeNote.value?.tags.slice(0, 3) || []);
 
-  const currentNoteTasks = computed(() =>
-    filterTasksForPath(recentTasks.value, activePath.value).slice(0, 4),
+  const taskHistoryLabels = computed<TaskHistoryLabels>(() => ({
+    all: t('taskHistoryService.all'),
+    summary: t('taskHistoryService.summary'),
+    cards: t('taskHistoryService.cards'),
+    chat: t('taskHistoryService.chat'),
+    sync: t('taskHistoryService.sync'),
+    summaryTask: t('taskHistoryService.summaryTask'),
+    cardsTask: t('taskHistoryService.cardsTask'),
+    chatTask: t('taskHistoryService.chatTask'),
+    syncTask: t('taskHistoryService.syncTask'),
+    summaryTitle: t('taskHistoryService.summaryTitle'),
+    cardsTitle: t('taskHistoryService.cardsTitle'),
+    cardCount: count => t('taskHistoryService.cardCount', {count}),
+    chatTitle: t('taskHistoryService.chatTitle'),
+    messageCount: count => t('taskHistoryService.messageCount', {count}),
+    syncDescription: item => t('taskHistoryService.syncDescription', item),
+  }));
+
+  const recentTasks = computed(
+    () => (
+      historyRevision.value,
+      locale.value,
+      buildTaskHistory(plugin.settings, taskHistoryLabels.value)
+    ),
   );
 
-  const actions = computed(() => [
-    {
-      key: 'summary' as const,
-      title: t('home.actions.summarizeTitle'),
-      desc: t('home.actions.summarizeDesc'),
-      icon: DocumentTextIcon,
-    },
-    {
-      key: 'cards' as const,
-      title: t('home.actions.cardsTitle'),
-      desc: t('home.actions.cardsDesc'),
-      icon: BookmarkSquareIcon,
-    },
-    {
-      key: 'chat' as const,
-      title: t('home.actions.chatTitle'),
-      desc: t('home.actions.chatDesc'),
-      icon: ChatBubbleOvalLeftEllipsisIcon,
-    },
-    {
-      key: 'summary' as const,
-      title: t('home.actions.extractTitle'),
-      desc: t('home.actions.extractDesc'),
-      icon: SparklesIcon,
-    },
-    {
-      key: 'sync' as const,
-      title: t('home.actions.syncTitle'),
-      desc: t('home.actions.syncDesc'),
-      icon: ArrowPathIcon,
-    },
-  ]);
+  const currentNoteTasks = computed(() =>
+    filterTasksForPath(recentTasks.value, activePath.value).slice(0, 3),
+  );
 
-  const refreshHistory = () => {
-    historyRevision.value += 1;
-  };
-
-  const refreshActiveFile = () => {
-    activeFile.value = plugin.app.workspace.getActiveFile();
-  };
-
-  const recentTasks = computed(() => (historyRevision.value, buildTaskHistory(plugin.settings)));
-
-  const filteredTasks = computed(() => {
-    if (taskFilter.value === 'all') return recentTasks.value.slice(0, 6);
-    return recentTasks.value.filter(item => item.type === taskFilter.value).slice(0, 6);
+  const relatedNotes = computed(() => {
+    if (!activePath.value) return [];
+    const currentTags = new Set(activeTags.value);
+    return notes.value
+      .filter(note => note.path !== activePath.value)
+      .map(note => {
+        const sharedTags = note.tags.filter(tag => currentTags.has(tag));
+        const sameFolder = Boolean(activeFolder.value && note.folderPath === activeFolder.value);
+        const score = sharedTags.length * 2 + (sameFolder ? 1 : 0);
+        return {
+          ...note,
+          reason: sharedTags.length
+            ? t('home.relatedByTag', {tag: sharedTags[0]})
+            : sameFolder
+              ? t('home.relatedByFolder')
+              : '',
+          score,
+        };
+      })
+      .filter(note => note.score > 0)
+      .sort((a, b) => b.score - a.score || b.modifiedAt - a.modifiedAt)
+      .slice(0, 3);
   });
 
-  const primaryActions = computed(() => [
+  const noteMeta = computed(() => {
+    if (!activePath.value) return t('home.currentNoteEmptyHint');
+    const parts = [
+      activeNote.value?.plainText ? t('home.wordCount', {count: activeNote.value.plainText.length}) : '',
+      t('home.relatedCount', {count: relatedNotes.value.length}),
+    ].filter(Boolean);
+    return parts.join(' · ');
+  });
+
+  const quickActions = computed(() => [
     {
       key: 'summary' as const,
-      title: t('nav.summary'),
+      title: t('home.quickSummary'),
       icon: DocumentTextIcon,
-      disabled: false,
-    },
-    {
-      key: 'chat' as const,
-      title: t('nav.chat'),
-      icon: ChatBubbleOvalLeftEllipsisIcon,
-      disabled: false,
     },
     {
       key: 'cards' as const,
-      title: t('nav.cards'),
+      title: t('home.quickCards'),
       icon: BookmarkSquareIcon,
-      disabled: false,
     },
     {
-      key: 'sync' as const,
-      title: t('nav.sync'),
-      icon: ArrowPathIcon,
-      disabled: false,
+      key: 'search' as const,
+      title: t('home.quickRelated'),
+      icon: LinkIcon,
     },
-  ]);
-
-  const taskTypeOptions = computed(() => [
-    {value: 'all', label: t('home.taskTypes.all')},
-    {value: 'summary', label: t('home.taskTypes.summary')},
-    {value: 'cards', label: t('home.taskTypes.cards')},
-    {value: 'chat', label: t('home.taskTypes.chat')},
-    {value: 'sync', label: t('home.taskTypes.sync')},
   ]);
 
   const taskTypeLabel = (type: TaskHistoryType) => {
@@ -145,6 +149,14 @@
       minute: '2-digit',
     });
 
+  const refreshHistory = () => {
+    historyRevision.value += 1;
+  };
+
+  const refreshActiveFile = () => {
+    activeFile.value = plugin.app.workspace.getActiveFile();
+  };
+
   const reconnect = async () => {
     if (reconnecting.value) return;
     reconnecting.value = true;
@@ -152,9 +164,34 @@
     reconnecting.value = false;
   };
 
+  const sendChatDraft = () => {
+    if (!hasActiveMarkdown.value) return;
+    const message = chatDraft.value.trim();
+    if (message) {
+      emit('openChat', message, true, true);
+      chatDraft.value = '';
+      return;
+    }
+    emit('open', 'chat');
+  };
+
+  const runQuickAction = (key: 'summary' | 'cards' | 'search') => {
+    if (!hasActiveMarkdown.value) return;
+    if (key === 'summary') {
+      emit('summarizeCurrent');
+      return;
+    }
+    if (key === 'search') {
+      emit('searchCurrent', activeTitle.value);
+      return;
+    }
+    emit('open', key);
+  };
+
   onMounted(() => {
     refreshActiveFile();
     void reconnect();
+    void refreshVaultNotes();
     window.addEventListener(WISEMIND_TASK_HISTORY_UPDATED_EVENT, refreshHistory);
     const workspace = plugin.app.workspace as any;
     if (typeof workspace.on === 'function') {
@@ -163,6 +200,7 @@
       workspaceEventRefs.push(workspace.on('layout-change', refreshActiveFile));
     }
   });
+
   onUnmounted(() => {
     window.removeEventListener(WISEMIND_TASK_HISTORY_UPDATED_EVENT, refreshHistory);
     const workspace = plugin.app.workspace as any;
@@ -178,7 +216,10 @@
     <header class="wm-home-header">
       <div class="wm-home-title">
         <span class="wm-brand-logo" v-html="wiseMindLogoIcon"></span>
-        <h2>{{ t('home.title') }}</h2>
+        <span>
+          <h2>{{ t('home.title') }}</h2>
+          <small>{{ t('home.subtitle') }}</small>
+        </span>
       </div>
       <div class="wm-status-actions">
         <span class="wm-status-pill" :class="{'is-connected': connected}">
@@ -217,40 +258,107 @@
       </div>
     </section>
 
-    <section v-else class="wm-home-note-panel">
-      <div class="wm-home-note-main">
-        <p class="wm-home-eyebrow">{{ t('home.currentNote') }}</p>
-        <h3>{{ activeTitle }}</h3>
-        <p class="wm-home-note-path">
-          {{ activePath || t('home.currentNoteEmptyHint') }}
-        </p>
+    <template v-else>
+      <section v-if="hasActiveMarkdown" class="wm-home-note-panel">
+        <div class="wm-home-note-main">
+          <div class="wm-home-note-label">
+            <DocumentTextIcon class="wm-icon" />
+            <span>{{ t('home.currentNote') }}</span>
+          </div>
+          <h3 :title="activeTitle">{{ activeTitle }}</h3>
+          <p class="wm-home-note-path">{{ activePath || t('home.currentNoteEmptyHint') }}</p>
+          <div v-if="activeTags.length" class="wm-home-note-tags">
+            <span v-for="tag in activeTags" :key="tag" class="wm-home-tag">#{{ tag }}</span>
+          </div>
+          <p class="wm-home-note-meta">{{ noteMeta }}</p>
+        </div>
+      </section>
+
+      <section v-if="!hasActiveMarkdown" class="wm-home-empty-state">
+        <DocumentTextIcon class="wm-home-empty-icon" />
+        <h3>{{ t('home.noOpenMarkdown') }}</h3>
+        <p>{{ t('home.currentNoteEmptyHint') }}</p>
+      </section>
+
+      <section v-else class="wm-home-ask-panel">
+        <div class="wm-home-section-title">
+          <h3>{{ t('home.askCurrentNote') }}</h3>
+        </div>
+        <div class="wm-home-chat-box">
+          <textarea
+            v-model="chatDraft"
+            class="wm-home-chat-input"
+            :placeholder="t('home.askPlaceholder')"
+            @keydown.enter.exact.prevent="sendChatDraft"
+            @keydown.meta.enter.prevent="sendChatDraft"
+            @keydown.ctrl.enter.prevent="sendChatDraft"
+          ></textarea>
+          <button
+            class="wm-home-send-button"
+            type="button"
+            :aria-label="t('home.sendToChat')"
+            @click="sendChatDraft"
+          >
+            <ChatBubbleOvalLeftEllipsisIcon class="wm-icon" />
+          </button>
+        </div>
         <div class="wm-home-quick-actions">
           <button
-            v-for="action in primaryActions"
+            v-for="action in quickActions"
             :key="action.key"
             class="wm-home-quick-button"
             type="button"
-            @click="emit('open', action.key)"
+            :disabled="!hasActiveMarkdown"
+            @click="runQuickAction(action.key)"
           >
             <component :is="action.icon" class="wm-icon" />
             <span>{{ action.title }}</span>
           </button>
         </div>
-      </div>
+      </section>
 
-      <div class="wm-home-note-history">
+      <section v-if="hasActiveMarkdown" class="wm-home-section">
         <div class="wm-home-section-title">
-          <h4>{{ t('home.currentNoteHistory') }}</h4>
+          <h3>{{ t('home.relatedNotes') }}</h3>
+        </div>
+        <div class="wm-home-related-panel">
+          <template v-if="relatedNotes.length">
+            <button
+              v-for="note in relatedNotes"
+              :key="note.path"
+              class="wm-home-related-item"
+              type="button"
+              @click="emit('open', 'chat')"
+            >
+              <DocumentTextIcon class="wm-icon" />
+              <span>
+                <strong>{{ note.title }}</strong>
+                <small>{{ note.reason }}</small>
+              </span>
+              <ChevronRightIcon class="wm-icon" />
+            </button>
+          </template>
+          <p v-else class="wm-home-empty">{{ t('home.noRelatedNotes') }}</p>
+          <button class="wm-home-wide-button" type="button" @click="emit('open', 'search')">
+            {{ t('home.viewAllRelated') }}
+            <ChevronRightIcon class="wm-icon" />
+          </button>
+        </div>
+      </section>
+
+      <section v-if="currentNoteTasks.length" class="wm-home-section">
+        <div class="wm-home-section-title">
+          <h3>{{ t('home.currentNoteWorkflow') }}</h3>
           <button class="wm-inline-button" type="button" @click="emit('openHistory', 'all')">
             {{ t('home.viewAll') }}
             <ChevronRightIcon class="wm-icon" />
           </button>
         </div>
-        <div v-if="currentNoteTasks.length" class="wm-home-history-list">
+        <div class="wm-home-recent-panel">
           <button
             v-for="task in currentNoteTasks"
             :key="`${task.type}:${task.id}`"
-            class="wm-home-history-item"
+            class="wm-home-workflow-item"
             type="button"
             @click="emit('openTask', task)"
           >
@@ -261,68 +369,17 @@
             <ChevronRightIcon class="wm-icon" />
           </button>
         </div>
-        <p v-else class="wm-home-empty">{{ t('home.noCurrentNoteTasks') }}</p>
-      </div>
-    </section>
+      </section>
 
-    <section class="wm-home-section">
-      <div class="wm-home-section-title">
-        <h3>{{ t('home.moreActions') }}</h3>
-      </div>
-      <div class="wm-home-operation-list">
-        <button
-          v-for="action in actions"
-          :key="`${action.key}:${action.title}`"
-          type="button"
-          class="wm-home-operation"
-          @click="emit('open', action.key)"
-        >
-          <span class="wm-home-operation-icon">
-            <component :is="action.icon" class="wm-icon" />
-          </span>
-          <span class="wm-home-operation-copy">
-            <strong>{{ action.title }}</strong>
-            <small>{{ action.desc }}</small>
-          </span>
-          <ChevronRightIcon class="wm-action-arrow" />
+      <footer class="wm-home-sync-footer">
+        <span>
+          <ArrowPathIcon class="wm-icon" />
+          {{ t('home.syncedStatus') }}
+        </span>
+        <button class="wm-inline-button" type="button" @click="emit('open', 'sync')">
+          {{ t('home.syncPreview') }}
         </button>
-      </div>
-    </section>
-
-    <button class="wm-home-search-button" type="button" @click="emit('open', 'search')">
-      <MagnifyingGlassIcon class="wm-icon" />
-      {{ t('home.searchAll') }}
-    </button>
-
-    <section class="wm-home-section">
-      <div class="wm-home-section-title">
-        <h3>{{ t('home.recentTasks') }}</h3>
-        <div class="wm-home-filter">
-          <RekaSelect v-model="taskFilter" :options="taskTypeOptions" />
-          <button class="wm-inline-button" type="button" @click="emit('openHistory', taskFilter)">
-            {{ t('home.viewAll') }}
-            <ChevronRightIcon class="wm-icon" />
-          </button>
-        </div>
-      </div>
-      <div class="wm-home-recent-panel">
-        <template v-if="filteredTasks.length">
-          <button
-            v-for="task in filteredTasks"
-            :key="`${task.type}:${task.id}`"
-            class="wm-home-recent-item"
-            type="button"
-            @click="emit('openTask', task)"
-          >
-            <span>
-              <strong>{{ task.title }}</strong>
-              <small>{{ taskTypeLabel(task.type) }} · {{ formatTime(task.createdAt) }}</small>
-            </span>
-            <ChevronRightIcon class="wm-icon" />
-          </button>
-        </template>
-        <p v-else class="wm-home-empty">{{ t('home.noRecentTasks') }}</p>
-      </div>
-    </section>
+      </footer>
+    </template>
   </section>
 </template>
