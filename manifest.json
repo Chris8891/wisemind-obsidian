@@ -1,7 +1,7 @@
 {
   "id": "wisemindai",
   "name": "WiseMindAI",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "minAppVersion": "1.5.0",
   "description": "本地使用 WiseMindAI 的总结、知识卡片、AI 对话和双向同步能力.",
   "author": "WiseMindAI",

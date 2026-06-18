@@ -154,6 +154,7 @@ declare module 'obsidian' {
     getRightLeaf(split: boolean): WorkspaceLeaf | null;
     revealLeaf(leaf: WorkspaceLeaf): Promise<void>;
     on(name: 'file-menu', callback: (menu: Menu, file: TAbstractFile) => unknown): unknown;
+    on(name: 'files-menu', callback: (menu: Menu, files: TAbstractFile[]) => unknown): unknown;
     on(name: 'editor-menu', callback: (menu: Menu, editor: Editor, view: MarkdownView) => unknown): unknown;
     registerView(type: string, viewCreator: (leaf: WorkspaceLeaf) => ItemView): void;
   }

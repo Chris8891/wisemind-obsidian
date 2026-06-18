@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS: WiseMindImportSettings = {
   apiBaseUrl: 'http://127.0.0.1:38221',
   defaultTargets: { notes: true, documents: false, knowledge: true },
   defaultWiseMindSources: { notes: true, documents: true, knowledgeDocuments: true },
+  showContextMenu: false,
   contextMenuDefaults: {
     noteFolderPath: '',
     documentFolderPath: '',
@@ -51,6 +52,7 @@ export const normalizeWiseMindSettings = (
   raw: Partial<WiseMindImportSettings> | null,
 ): WiseMindImportSettings => {
   const settings: WiseMindImportSettings = { ...DEFAULT_SETTINGS, ...(raw || {}) };
+  settings.showContextMenu = raw?.showContextMenu === true;
   settings.syncPlans = Array.isArray(settings.syncPlans) ? settings.syncPlans : [];
   settings.syncHistory = Array.isArray(settings.syncHistory) ? settings.syncHistory : [];
   settings.assistantSummaryHistory = Array.isArray(settings.assistantSummaryHistory)
@@ -138,6 +140,18 @@ export class WiseMindSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.apiBaseUrl)
           .onChange(async value => {
             this.plugin.settings.apiBaseUrl = value.trim() || DEFAULT_SETTINGS.apiBaseUrl;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName(t('settings.showContextMenu'))
+      .setDesc(t('settings.showContextMenuDesc'))
+      .addToggle(toggle =>
+        toggle
+          .setValue(this.plugin.settings.showContextMenu)
+          .onChange(async value => {
+            this.plugin.settings.showContextMenu = value;
             await this.plugin.saveSettings();
           }),
       );

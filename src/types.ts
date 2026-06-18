@@ -92,6 +92,7 @@ export type WiseMindImportSettings = {
   apiBaseUrl: string;
   defaultTargets: ImportTargetSelection;
   defaultWiseMindSources: WiseMindSourceSelection;
+  showContextMenu: boolean;
   contextMenuDefaults: WiseMindContextMenuDefaults;
   contextMenuRecents: WiseMindContextMenuRecents;
   assistantDefaults: WiseMindAssistantDefaults;

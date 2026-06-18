@@ -16,8 +16,10 @@ await build({
     'src/services/editorRewriteActions.ts',
     'src/services/chatInsertFormat.ts',
     'src/services/cardsMarkdown.ts',
+    'src/quickActions.ts',
   ],
   outdir: helperOutdir,
+  entryNames: '[name]',
   bundle: false,
   format: 'esm',
   platform: 'node',
@@ -30,6 +32,7 @@ const syncPreviewHelpers = await import(pathToFileURL(join(helperOutdir, 'syncPr
 const editorRewriteHelpers = await import(pathToFileURL(join(helperOutdir, 'editorRewriteActions.js')));
 const chatInsertHelpers = await import(pathToFileURL(join(helperOutdir, 'chatInsertFormat.js')));
 const cardsMarkdownHelpers = await import(pathToFileURL(join(helperOutdir, 'cardsMarkdown.js')));
+const quickActionHelpers = await import(pathToFileURL(join(helperOutdir, 'quickActions.js')));
 
 test('manifest uses publishable WiseMindAI plugin identity', async () => {
   const manifest = JSON.parse(await readFile('manifest.json', 'utf8'));
@@ -57,6 +60,50 @@ test('language setting defaults to Obsidian and only exposes Chinese and English
   assert.match(i18nSource, /value: 'system'/);
   assert.match(i18nSource, /value: 'zh_CN'/);
   assert.match(i18nSource, /value: 'en_US'/);
+});
+
+test('context menu defaults hidden and only registers actions when enabled', async () => {
+  const settingsSource = await readFile('src/settings.ts', 'utf8');
+  const mainSource = await readFile('src/main.ts', 'utf8');
+
+  assert.match(settingsSource, /showContextMenu: false/);
+  assert.match(settingsSource, /raw\?\.showContextMenu === true/);
+  assert.match(mainSource, /if \(!this\.settings\.showContextMenu\) return;/);
+  assert.match(mainSource, /on\('files-menu'/);
+});
+
+test('file explorer context menu resolves Markdown files from files, folders, and root', () => {
+  const markdownFiles = [
+    {path: 'Inbox.md', extension: 'md'},
+    {path: 'Projects/Plan.md', extension: 'md'},
+    {path: 'Projects/Nested/Note.md', extension: 'md'},
+  ];
+  const app = {
+    vault: {
+      getMarkdownFiles: () => markdownFiles,
+      getAbstractFileByPath: path => markdownFiles.find(file => file.path === path) || null,
+    },
+  };
+
+  assert.deepEqual(
+    quickActionHelpers.collectMarkdownFiles(app, {path: 'Inbox.md', name: 'Inbox.md'}).map(file => file.path),
+    ['Inbox.md'],
+  );
+  assert.deepEqual(
+    quickActionHelpers.collectMarkdownFiles(app, {path: 'Projects', name: 'Projects'}).map(file => file.path),
+    ['Projects/Plan.md', 'Projects/Nested/Note.md'],
+  );
+  assert.deepEqual(
+    quickActionHelpers.collectMarkdownFiles(app, {path: '/', name: '/'}).map(file => file.path),
+    ['Inbox.md', 'Projects/Plan.md', 'Projects/Nested/Note.md'],
+  );
+  assert.deepEqual(
+    quickActionHelpers.collectMarkdownFilesFromTargets(app, [
+      {path: 'Projects', name: 'Projects'},
+      {path: 'Projects/Plan.md', extension: 'md'},
+    ]).map(file => file.path),
+    ['Projects/Plan.md', 'Projects/Nested/Note.md'],
+  );
 });
 
 const sourceFiles = async (dir) => {

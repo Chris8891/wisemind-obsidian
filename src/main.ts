@@ -14,7 +14,7 @@ import { WISEMIND_ICON_ID, WISEMIND_OBSIDIAN_ICON, WISEMIND_VIEW_TYPE } from './
 import {openContextMenuDestinationModal} from './contextMenuDestinationModal';
 import {resolveLanguageSetting, setI18nLocale, translate} from './i18n';
 import { runObsidianToWiseMindImport } from './importRunner';
-import { collectMarkdownFiles, isMarkdownFile } from './quickActions';
+import { collectMarkdownFiles, collectMarkdownFilesFromTargets, hasFolderTarget } from './quickActions';
 import {
   DEFAULT_SETTINGS,
   normalizeWiseMindSettings,
@@ -218,17 +218,21 @@ export default class WiseMindObsidianPlugin extends Plugin {
   private registerMenus() {
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {
-        if (isMarkdownFile(file)) {
-          this.addFileMenuItems(menu, [file as any]);
-          return;
-        }
-        const files = collectMarkdownFiles(this.app, file as TAbstractFile);
-        if (files.length) this.addFileMenuItems(menu, files, true);
+        if (!this.settings.showContextMenu) return;
+        this.addFileExplorerMenuItems(menu, file as TAbstractFile);
+      }),
+    );
+
+    this.registerEvent(
+      (this.app.workspace as any).on('files-menu', (menu: any, files: TAbstractFile[]) => {
+        if (!this.settings.showContextMenu) return;
+        this.addFileExplorerMenuItems(menu, files);
       }),
     );
 
     this.registerEvent(
       this.app.workspace.on('editor-menu', (menu, editor, view) => {
+        if (!this.settings.showContextMenu) return;
         if (view.file) this.addFileMenuItems(menu, [view.file]);
         const selectedText = editor.getSelection();
         if (selectedText.trim()) {
@@ -263,6 +267,11 @@ export default class WiseMindObsidianPlugin extends Plugin {
         }
       }),
     );
+  }
+
+  private addFileExplorerMenuItems(menu: any, targets: TAbstractFile | TAbstractFile[]) {
+    const files = collectMarkdownFilesFromTargets(this.app, targets);
+    if (files.length) this.addFileMenuItems(menu, files, hasFolderTarget(targets));
   }
 
   private async runEditorRewriteAction(action: EditorRewriteAction, selectedText = '') {

@@ -32,6 +32,7 @@ const form = reactive({
   contextMenuNoteFolderPath: plugin.settings.contextMenuDefaults.noteFolderPath,
   contextMenuDocumentFolderPath: plugin.settings.contextMenuDefaults.documentFolderPath,
   contextMenuKnowledgeBaseName: plugin.settings.contextMenuDefaults.knowledgeBaseName,
+  showContextMenu: plugin.settings.showContextMenu,
   mentionNoteLimit: plugin.settings.mentionNoteLimit,
   duplicatePolicy: plugin.settings.duplicatePolicy,
 });
@@ -52,6 +53,7 @@ const syncFormFromSettings = () => {
   form.contextMenuNoteFolderPath = plugin.settings.contextMenuDefaults.noteFolderPath;
   form.contextMenuDocumentFolderPath = plugin.settings.contextMenuDefaults.documentFolderPath;
   form.contextMenuKnowledgeBaseName = plugin.settings.contextMenuDefaults.knowledgeBaseName;
+  form.showContextMenu = plugin.settings.showContextMenu;
   form.mentionNoteLimit = plugin.settings.mentionNoteLimit;
   form.duplicatePolicy = plugin.settings.duplicatePolicy;
 };
@@ -67,6 +69,7 @@ const save = async () => {
   plugin.settings.contextMenuDefaults.noteFolderPath = form.contextMenuNoteFolderPath;
   plugin.settings.contextMenuDefaults.documentFolderPath = form.contextMenuDocumentFolderPath;
   plugin.settings.contextMenuDefaults.knowledgeBaseName = form.contextMenuKnowledgeBaseName;
+  plugin.settings.showContextMenu = form.showContextMenu;
   const mentionNoteLimit = Math.max(0, Math.floor(Number(form.mentionNoteLimit || 0)));
   plugin.settings.mentionNoteLimit = Number.isFinite(mentionNoteLimit) ? mentionNoteLimit : 0;
   plugin.settings.duplicatePolicy = form.duplicatePolicy as typeof plugin.settings.duplicatePolicy;
@@ -224,6 +227,13 @@ const importData = async (event: Event) => {
           <BookmarkSquareIcon class="wm-panel-title-icon" />
           <h3>{{ t('settings.contextMenuSection') }}</h3>
         </div>
+        <label class="wm-checkbox-row">
+          <input v-model="form.showContextMenu" type="checkbox" />
+          <span>
+            <strong>{{ t('settings.showContextMenu') }}</strong>
+            <small class="wm-muted">{{ t('settings.showContextMenuDesc') }}</small>
+          </span>
+        </label>
         <label>
           <span class="wm-setting-label">
             <span>{{ t('settings.defaultNoteFolder') }}</span>

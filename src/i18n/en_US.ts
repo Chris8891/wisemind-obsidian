@@ -48,6 +48,8 @@ export default {
     duplicateSkip: 'Skip existing content',
     duplicateCreate: 'Create a copy',
     contextMenuSection: 'Context menu defaults',
+    showContextMenu: 'Show Obsidian context menu',
+    showContextMenuDesc: 'Show WiseMindAI actions in Obsidian file, folder, and editor context menus.',
     defaultNoteFolder: 'Send to WiseMindAI Notes - default folder',
     defaultNoteFolderDesc: 'Default folder selected when sending content to WiseMindAI Notes from the context menu.',
     defaultDocumentFolder: 'Send to WiseMindAI Documents - default folder',

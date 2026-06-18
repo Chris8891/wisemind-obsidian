@@ -48,6 +48,8 @@ export default {
     duplicateSkip: '跳过已有内容',
     duplicateCreate: '创建副本',
     contextMenuSection: '右键菜单配置',
+    showContextMenu: '显示 Obsidian 右键菜单',
+    showContextMenuDesc: '开启后，在 Obsidian 文件、文件夹和编辑器右键菜单中显示 WiseMindAI 操作。',
     defaultNoteFolder: '发送到 WiseMindAI 笔记 - 默认文件夹',
     defaultNoteFolderDesc: '右键发送到 WiseMindAI 笔记时，弹框默认选中的文件夹。',
     defaultDocumentFolder: '发送到 WiseMindAI 文档 - 默认文件夹',

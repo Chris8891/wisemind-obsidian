@@ -52,14 +52,48 @@ export const buildQuickActionPlan = (params: {
   };
 };
 
-export const collectMarkdownFiles = (app: App, target: TAbstractFile): TFile[] => {
-  if (isMarkdownFile(target)) return [target];
-  const folderPath = target.path.endsWith('/') ? target.path : `${target.path}/`;
-  return app.vault.getMarkdownFiles().filter(file => file.path.startsWith(folderPath));
+export const collectMarkdownFiles = (app: App, target: TAbstractFile | null | undefined): TFile[] => {
+  if (!target?.path) return [];
+  if (isMarkdownFile(target)) {
+    const vaultFile = app.vault.getAbstractFileByPath(target.path);
+    return isMarkdownFile(vaultFile) ? [vaultFile] : [target as TFile];
+  }
+  const folderPrefix = normalizeFolderPrefix(target.path);
+  return app.vault.getMarkdownFiles().filter(file => {
+    const filePath = normalizeVaultPath(file.path);
+    return folderPrefix ? filePath.startsWith(folderPrefix) : true;
+  });
 };
 
-export const isMarkdownFile = (file: TAbstractFile): file is TFile =>
-  'extension' in file && (file as TFile).extension === 'md';
+export const collectMarkdownFilesFromTargets = (
+  app: App,
+  targets: TAbstractFile | TAbstractFile[] | null | undefined,
+): TFile[] => {
+  const files = (Array.isArray(targets) ? targets : [targets]).flatMap(target =>
+    collectMarkdownFiles(app, target),
+  );
+  const seen = new Set<string>();
+  return files.filter(file => {
+    if (seen.has(file.path)) return false;
+    seen.add(file.path);
+    return true;
+  });
+};
+
+export const isMarkdownFile = (file: TAbstractFile | null | undefined): file is TFile => {
+  if (!file?.path) return false;
+  return ((file as TFile).extension || '').toLowerCase() === 'md' || file.path.toLowerCase().endsWith('.md');
+};
+
+export const hasFolderTarget = (targets: TAbstractFile | TAbstractFile[] | null | undefined): boolean =>
+  (Array.isArray(targets) ? targets : [targets]).some(target => Boolean(target?.path) && !isMarkdownFile(target));
+
+const normalizeVaultPath = (path: string) => path.replace(/^\/+/, '').replace(/\/+$/g, '');
+
+const normalizeFolderPrefix = (path: string) => {
+  const normalized = normalizeVaultPath(path);
+  return normalized ? `${normalized}/` : '';
+};
 
 const targetsForAction = (action: QuickAction): ImportTargetSelection => {
   if (action === 'send-file-to-document') return { notes: false, documents: true, knowledge: false };
