@@ -3034,6 +3034,12 @@
   min-height: 100%;
 }
 
+.wm-chat-tab-content {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .wm-select-trigger {
   display: inline-flex;
   align-items: center;

@@ -256,7 +256,7 @@
             @open-history="openHistoryDialog('cards')"
           />
         </TabsContent>
-        <TabsContent value="chat" class="wm-tab-content">
+        <TabsContent value="chat" class="wm-tab-content wm-chat-tab-content">
           <ChatPage
             :history-item-id="selectedHistory?.type === 'chat' ? selectedHistory.id : ''"
             :history-token="selectedHistory?.type === 'chat' ? selectedHistory.token : 0"

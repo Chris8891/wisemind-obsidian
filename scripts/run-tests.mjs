@@ -1,5 +1,6 @@
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
+import { baseCompile } from '@intlify/message-compiler';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readdir,readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -17,6 +18,9 @@ await build({
     'src/services/chatInsertFormat.ts',
     'src/services/cardsMarkdown.ts',
     'src/quickActions.ts',
+    'src/services/domRef.ts',
+    'src/i18n/zh_CN.ts',
+    'src/i18n/en_US.ts',
   ],
   outdir: helperOutdir,
   entryNames: '[name]',
@@ -33,6 +37,22 @@ const editorRewriteHelpers = await import(pathToFileURL(join(helperOutdir, 'edit
 const chatInsertHelpers = await import(pathToFileURL(join(helperOutdir, 'chatInsertFormat.js')));
 const cardsMarkdownHelpers = await import(pathToFileURL(join(helperOutdir, 'cardsMarkdown.js')));
 const quickActionHelpers = await import(pathToFileURL(join(helperOutdir, 'quickActions.js')));
+const domRefHelpers = await import(pathToFileURL(join(helperOutdir, 'domRef.js')));
+const zhCNMessages = (await import(pathToFileURL(join(helperOutdir, 'zh_CN.js')))).default;
+const enUSMessages = (await import(pathToFileURL(join(helperOutdir, 'en_US.js')))).default;
+
+const collectI18nMessages = (messages, prefix = '') => {
+  const items = [];
+  for (const [key, value] of Object.entries(messages)) {
+    const nextPrefix = prefix ? `${prefix}.${key}` : key;
+    if (typeof value === 'string') {
+      items.push([nextPrefix, value]);
+    } else if (value && typeof value === 'object') {
+      items.push(...collectI18nMessages(value, nextPrefix));
+    }
+  }
+  return items;
+};
 
 test('manifest uses publishable WiseMindAI plugin identity', async () => {
   const manifest = JSON.parse(await readFile('manifest.json', 'utf8'));
@@ -136,6 +156,19 @@ test('English i18n messages do not use legacy Chinese DOM text keys', async () =
   assert.doesNotMatch(source, /'[\u4e00-\u9fff][^']*':/);
 });
 
+test('i18n messages compile without linked format errors', () => {
+  for (const [locale, messages] of Object.entries({zh_CN: zhCNMessages, en_US: enUSMessages})) {
+    for (const [key, message] of collectI18nMessages(messages)) {
+      const errors = [];
+      baseCompile(message, {
+        onError: error => errors.push(error.message),
+      });
+
+      assert.deepEqual(errors, [], `${locale}.${key}: ${message}`);
+    }
+  }
+});
+
 test('build output contains Obsidian plugin files', () => {
   assert.ok(existsSync('dist/main.js'));
   assert.ok(existsSync('dist/styles.css'));
@@ -146,6 +179,12 @@ test('Obsidian plugin entry is self-contained and does not require local build c
   const main = await readFile('dist/main.js', 'utf8');
 
   assert.doesNotMatch(main, /require\(["']\.\/[^"']+["']\)/);
+});
+
+test('template element resolver ignores component refs without a DOM element', () => {
+  assert.equal(domRefHelpers.resolveTemplateElement(null), null);
+  assert.equal(domRefHelpers.resolveTemplateElement({}), null);
+  assert.deepEqual(domRefHelpers.queryTemplateElements({querySelectorAll: null}, '[data-session-id]'), []);
 });
 
 test('Tailwind CSS output keeps prefixed utilities for Obsidian views', async () => {

@@ -21,6 +21,7 @@
   import {useWiseMindConnectionGuard} from '../../composables/useWiseMindConnectionGuard';
   import {resolveLanguageSetting} from '../../i18n';
   import {type ChatInsertFormat, formatChatMessageForInsert} from '../../services/chatInsertFormat';
+  import {queryTemplateElements} from '../../services/domRef';
   import {type NoteMentionCandidate, searchNoteMentions} from '../../services/noteMentionSearch';
   import {openObsidianNote} from '../../services/noteNavigation';
   import {insertTextToActiveNote} from '../../services/noteWriter';
@@ -82,7 +83,7 @@
   const insertFormat = ref<ChatInsertFormat>('markdown');
   const streamingMessageIds = ref<Record<string, string>>({});
   const messagesEl = ref<HTMLDivElement | null>(null);
-  const sessionTabsEl = ref<HTMLDivElement | null>(null);
+  const sessionTabsEl = ref<HTMLElement | {$el?: unknown} | null>(null);
   const sessionsReady = ref(false);
   const pendingDraft = ref<{
     message: string;
@@ -694,9 +695,9 @@
     await nextTick();
     const tabsEl = sessionTabsEl.value;
     if (!tabsEl || !activeSessionId.value) return;
-    const activeTab = Array.from(
-      tabsEl.querySelectorAll<HTMLElement>('[data-session-id]'),
-    ).find(item => item.dataset.sessionId === activeSessionId.value);
+    const activeTab = queryTemplateElements(tabsEl, '[data-session-id]').find(
+      item => item.dataset.sessionId === activeSessionId.value,
+    );
     activeTab?.scrollIntoView({
       behavior: 'smooth',
       block: 'nearest',
@@ -996,7 +997,7 @@
 
 <template>
   <section
-    class="wm-page wm:flex wm:h-[calc(100vh-112px)] wm:max-h-[calc(100vh-112px)] wm:min-h-0 wm:overflow-hidden"
+    class="wm-page wm:flex wm:h-full wm:min-h-0 wm:overflow-hidden"
   >
     <header class="wm-page-header">
       <div class="wm-title-line">
@@ -1025,7 +1026,7 @@
     <TabsRoot
       v-if="activeSession"
       v-model="activeSessionId"
-      class="wm:flex wm:min-h-0 wm:min-w-0 wm:flex-1 wm:flex-col"
+      class="wm:flex wm:min-h-0 wm:min-w-0 wm:flex-1 wm:flex-col wm:overflow-hidden"
     >
       <TabsList
         ref="sessionTabsEl"
@@ -1056,7 +1057,7 @@
 
       <TabsContent
         :value="activeSession.id"
-        class="wm:grid wm:h-full wm:min-h-0 wm:min-w-0 wm:flex-1 wm:overflow-hidden wm:[grid-template-rows:minmax(0,1fr)_auto_auto]"
+        class="wm:grid wm:min-h-0 wm:min-w-0 wm:flex-1 wm:overflow-hidden wm:[grid-template-rows:minmax(0,1fr)_auto_auto]"
       >
         <div
           ref="messagesEl"
