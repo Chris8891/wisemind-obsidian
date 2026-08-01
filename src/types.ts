@@ -6,6 +6,120 @@ export type WiseMindResolvedLanguage = 'zh_CN' | 'en_US';
 
 export type WiseMindLanguageSetting = 'system' | WiseMindResolvedLanguage;
 
+export type TranscriptionScene = 'meeting' | 'class' | 'interview' | 'idea' | 'other';
+export type TranscriptionStatus =
+  | 'recording'
+  | 'paused'
+  | 'processing'
+  | 'pending'
+  | 'organized'
+  | 'failed'
+  | 'recoverable';
+export type TranscriptionConnectionStatus =
+  | 'idle'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'disconnected'
+  | 'failed';
+export type TranscriptionMarkKind = 'highlight' | 'todo' | 'question';
+export type TranscriptionCompletionAction = 'ask' | 'current-note' | 'new-note';
+
+export type WiseMindTranscriptionSettings = {
+  defaultScene: TranscriptionScene;
+  defaultProviderId: string;
+  defaultMicrophoneId: string;
+  saveAudio: boolean;
+  completionAction: TranscriptionCompletionAction;
+};
+
+export type TranscriptionMembershipQuota = {
+  isPro: boolean;
+  canStart: boolean;
+  canGenerateSummary: boolean;
+  sessionLimitMinutes: number | null;
+  monthlyLimitMinutes: number | null;
+  monthlyUsedMs: number;
+  monthlyRemainingMs: number | null;
+  summaryMonthlyLimit: number | null;
+  summaryMonthlyUsed: number;
+};
+
+export type TranscriptionStartOptions = {
+  activeProviderId: string;
+  providerType: string;
+  providerName: string;
+  modelName: string;
+  providers: Array<{
+    id: string;
+    providerType: string;
+    name: string;
+    modelName: string;
+  }>;
+  membership: TranscriptionMembershipQuota;
+};
+
+export type TranscriptionRecord = {
+  id: string;
+  title: string;
+  scenario: TranscriptionScene;
+  status: TranscriptionStatus;
+  provider: string;
+  model: string;
+  durationMs: number;
+  wordCount: number;
+  saveAudio: boolean;
+  connectionStatus?: TranscriptionConnectionStatus;
+  summary?: string;
+  keyPoints?: string;
+  todos?: string;
+  startedAt?: number;
+  endedAt?: number;
+  created_at: number;
+  updated_at: number;
+};
+
+export type TranscriptionSegment = {
+  id: string;
+  recordId: string;
+  text: string;
+  isFinal: boolean;
+  beginTimeMs?: number;
+  endTimeMs?: number;
+  sortOrder: number;
+  created_at: number;
+  updated_at: number;
+};
+
+export type TranscriptionDetail = {
+  record: TranscriptionRecord;
+  segments: TranscriptionSegment[];
+};
+
+export type TranscriptionOrganizeResult = {
+  summary: string;
+  keyPoints: string;
+  todos: string;
+};
+
+export type TranscriptionRuntimeEvent =
+  | {type: 'started'; record: TranscriptionRecord}
+  | {type: 'partial'; recordId: string; text: string}
+  | {type: 'segment'; recordId: string; segment: TranscriptionSegment}
+  | {type: 'status'; recordId: string; status: TranscriptionStatus; durationMs?: number}
+  | {
+      type: 'connection';
+      recordId: string;
+      status: TranscriptionConnectionStatus;
+      attempt?: number;
+      bufferedMs?: number;
+      errorCode?: string;
+    }
+  | {type: 'saved'; recordId: string; savedAt: number; durationMs?: number}
+  | {type: 'audioLevel'; recordId: string; level: number}
+  | {type: 'error'; recordId?: string; message: string; code?: string; recoverable?: boolean}
+  | {type: 'membershipLimit'; recordId: string; reason: 'session' | 'monthly'};
+
 export type ImportTargetSelection = {
   notes: boolean;
   documents: boolean;
@@ -96,6 +210,7 @@ export type WiseMindImportSettings = {
   contextMenuDefaults: WiseMindContextMenuDefaults;
   contextMenuRecents: WiseMindContextMenuRecents;
   assistantDefaults: WiseMindAssistantDefaults;
+  transcription: WiseMindTranscriptionSettings;
   assistantSummaryHistory: AssistantSummaryHistoryItem[];
   assistantCardHistory: AssistantCardHistoryItem[];
   assistantChatSessions: AssistantChatSession[];

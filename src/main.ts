@@ -7,6 +7,7 @@ import {
   formatRewriteResult,
   rewriteActionLabel,
 } from './services/editorRewriteActions';
+import {TranscriptionController} from './services/transcriptionController';
 import type {WiseMindDestination, WiseMindDestinationTarget} from './services/wisemindDestinations';
 import { WiseMindObsidianView } from './view/WiseMindObsidianView';
 import { type AssistantActionKind, buildAssistantActionPlan } from './assistantActions';
@@ -33,6 +34,7 @@ export default class WiseMindObsidianPlugin extends Plugin {
   settings: WiseMindImportSettings = DEFAULT_SETTINGS;
   api: WiseMindApiClient = new WiseMindApiClient(DEFAULT_SETTINGS.apiBaseUrl);
   statusBar!: WiseMindStatusBar;
+  transcription!: TranscriptionController;
 
   async onload() {
     this.settings = this.normalizeSettings((await this.loadData()) as Partial<WiseMindImportSettings> | null);
@@ -49,9 +51,18 @@ export default class WiseMindObsidianPlugin extends Plugin {
     this.registerView(WISEMIND_VIEW_TYPE, leaf => new WiseMindObsidianView(leaf, this));
     this.statusBar = new WiseMindStatusBar(
       this.addStatusBarItem(),
-      () => void this.activateView(),
+      () => void (this.transcription?.isActive ? this.openTranscriptionPage() : this.activateView()),
       () => this.settings.assistantDefaults.language,
     );
+    this.transcription = new TranscriptionController(this, state => {
+      if (['recording', 'paused', 'starting', 'stopping'].includes(state.status)) {
+        this.statusBar?.setTranscribing(state.elapsedMs, state.status === 'paused');
+      } else if (state.status === 'error') {
+        this.statusBar?.setDisconnected();
+      } else {
+        this.statusBar?.setConnected();
+      }
+    });
 
     const ribbonIcon = this.addRibbonIcon(WISEMIND_ICON_ID, 'WiseMindAI', () => void this.activateView());
     if (!ribbonIcon.querySelector('svg')) {
@@ -64,7 +75,7 @@ export default class WiseMindObsidianPlugin extends Plugin {
   }
 
   async onunload() {
-    // Vue view teardown is handled by WiseMindObsidianView.onClose.
+    await this.transcription?.dispose();
   }
 
   async saveSettings() {
@@ -102,6 +113,11 @@ export default class WiseMindObsidianPlugin extends Plugin {
     }
     await leaf.setViewState({ type: WISEMIND_VIEW_TYPE, active: true });
     await this.app.workspace.revealLeaf(leaf);
+  }
+
+  async openTranscriptionPage() {
+    await this.activateView();
+    window.dispatchEvent(new CustomEvent('wisemindai:open-page', {detail: 'transcription'}));
   }
 
   getActiveEditorSelection() {
@@ -165,6 +181,11 @@ export default class WiseMindObsidianPlugin extends Plugin {
       id: 'open-wisemindai',
       name: this.t('commands.openPanel'),
       callback: () => void this.activateView(),
+    });
+    this.addCommand({
+      id: 'open-live-transcription',
+      name: this.t('commands.openTranscription'),
+      callback: () => void this.openTranscriptionPage(),
     });
     this.addCommand({
       id: 'send-current-note-to-wisemind',

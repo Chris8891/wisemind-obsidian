@@ -30,6 +30,13 @@ export const DEFAULT_SETTINGS: WiseMindImportSettings = {
     defaultCardDeckName: 'Obsidian cards',
     defaultCardFolderName: 'Default',
   },
+  transcription: {
+    defaultScene: 'meeting',
+    defaultProviderId: '',
+    defaultMicrophoneId: 'default',
+    saveAudio: false,
+    completionAction: 'ask',
+  },
   assistantSummaryHistory: [],
   assistantCardHistory: [],
   assistantChatSessions: [],
@@ -87,6 +94,16 @@ export const normalizeWiseMindSettings = (
     ...DEFAULT_SETTINGS.assistantDefaults,
     ...(settings.assistantDefaults || {}),
   };
+  settings.transcription = {
+    ...DEFAULT_SETTINGS.transcription,
+    ...(settings.transcription || {}),
+  };
+  if (!['meeting', 'class', 'interview', 'idea', 'other'].includes(settings.transcription.defaultScene)) {
+    settings.transcription.defaultScene = DEFAULT_SETTINGS.transcription.defaultScene;
+  }
+  if (!['ask', 'current-note', 'new-note'].includes(settings.transcription.completionAction)) {
+    settings.transcription.completionAction = DEFAULT_SETTINGS.transcription.completionAction;
+  }
   if (!['system', 'zh_CN', 'en_US'].includes(settings.assistantDefaults.language)) {
     settings.assistantDefaults.language = DEFAULT_SETTINGS.assistantDefaults.language;
   }

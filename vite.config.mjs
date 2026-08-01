@@ -1,8 +1,8 @@
-import { defineConfig } from 'vite';
+import {defineConfig} from 'vite';
 import tailwindcss from '@tailwindcss/postcss';
 import vue from '@vitejs/plugin-vue';
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import {copyFile, mkdir, readFile, writeFile} from 'node:fs/promises';
+import {basename, join} from 'node:path';
 
 const syncObsidian = process.env.WISEMIND_OBSIDIAN_SYNC === '1';
 const syncPluginDir =
@@ -12,8 +12,8 @@ const syncBuiltFiles = ['main.js', 'styles.css'];
 const syncStaticFiles = ['manifest.json', 'versions.json'];
 
 const syncToObsidian = async () => {
-  await mkdir(syncPluginDir, { recursive: true });
-  await mkdir('dist', { recursive: true });
+  await mkdir(syncPluginDir, {recursive: true});
+  await mkdir('dist', {recursive: true});
   await Promise.all([
     ...syncBuiltFiles.map(file => copyFile(join('dist', file), join(syncPluginDir, file))),
     ...syncStaticFiles.flatMap(file => [
@@ -28,7 +28,7 @@ const syncToObsidian = async () => {
     manifest.id = pluginDirName;
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   }
-  console.log(`WiseMindAI Obsidian 已同步到：${syncPluginDir}`);
+  console.log(`WiseMindAI Obsidian synced to: ${syncPluginDir}`);
 };
 
 export default defineConfig({
@@ -41,7 +41,7 @@ export default defineConfig({
             try {
               await syncToObsidian();
             } catch (error) {
-              console.error('WiseMindAI Obsidian 同步到 Obsidian 插件目录失败。');
+              console.error('Failed to sync WiseMindAI Obsidian plugin.');
               console.error(error);
             }
           },
@@ -66,7 +66,8 @@ export default defineConfig({
       output: {
         exports: 'default',
         inlineDynamicImports: true,
-        assetFileNames: assetInfo => assetInfo.name === 'style.css' ? 'styles.css' : '[name][extname]',
+        assetFileNames: assetInfo =>
+          assetInfo.name === 'style.css' ? 'styles.css' : '[name][extname]',
       },
     },
   },

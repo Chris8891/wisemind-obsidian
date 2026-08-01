@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   ArrowDownTrayIcon,
@@ -9,12 +9,14 @@ import {
   Cog6ToothIcon,
   DocumentTextIcon,
   GlobeAltIcon,
+  MicrophoneIcon,
   QuestionMarkCircleIcon,
 } from '@heroicons/vue/24/outline';
 import { Notice } from 'obsidian';
 
 import { usePlugin } from '../../composables/usePlugin';
 import { languageOptions, setI18nLocale } from '../../i18n';
+import {type AudioInputDevice,listAudioInputDevices} from '../../services/audioCapture';
 import { notifyTaskHistoryUpdated } from '../../services/taskHistory';
 import { normalizeWiseMindSettings } from '../../settings';
 import RekaSelect from '../RekaSelect.vue';
@@ -26,6 +28,8 @@ const plugin = usePlugin();
 const { t } = useI18n();
 const connectionDialogOpen = ref(false);
 const importInputEl = ref<HTMLInputElement | null>(null);
+const audioDevices = ref<AudioInputDevice[]>([]);
+const audioDevicesLoading = ref(false);
 const form = reactive({
   apiBaseUrl: plugin.settings.apiBaseUrl,
   language: plugin.settings.assistantDefaults.language,
@@ -35,6 +39,10 @@ const form = reactive({
   showContextMenu: plugin.settings.showContextMenu,
   mentionNoteLimit: plugin.settings.mentionNoteLimit,
   duplicatePolicy: plugin.settings.duplicatePolicy,
+  transcriptionScene: plugin.settings.transcription.defaultScene,
+  transcriptionMicrophoneId: plugin.settings.transcription.defaultMicrophoneId,
+  transcriptionSaveAudio: plugin.settings.transcription.saveAudio,
+  transcriptionCompletionAction: plugin.settings.transcription.completionAction,
 });
 
 const uiLanguageOptions = computed(() =>
@@ -47,6 +55,42 @@ const duplicatePolicyOptions = computed(() => [
   { value: 'duplicate', label: t('settings.duplicateCreate') },
 ]);
 
+const transcriptionSceneOptions = computed(() =>
+  ['meeting', 'class', 'interview', 'idea', 'other'].map(value => ({
+    value,
+    label: t(`transcription.scenes.${value}`),
+  })),
+);
+
+const transcriptionCompletionOptions = computed(() =>
+  ['ask', 'current-note', 'new-note'].map(value => ({
+    value,
+    label: t(`settings.transcriptionCompletionOptions.${value}`),
+  })),
+);
+
+const microphoneOptions = computed(() => {
+  const options = audioDevices.value.map((device, index) => ({
+    value: device.deviceId,
+    label: device.label || t('transcription.microphoneNumber', {number: index + 1}),
+  }));
+  if (!options.some(option => option.value === 'default')) {
+    options.unshift({value: 'default', label: t('transcription.defaultMicrophone')});
+  }
+  return options;
+});
+
+const loadMicrophones = async (requestPermission = false) => {
+  audioDevicesLoading.value = true;
+  try {
+    audioDevices.value = await listAudioInputDevices(requestPermission);
+  } catch (error: any) {
+    new Notice(error?.message || t('transcription.microphoneLoadFailed'));
+  } finally {
+    audioDevicesLoading.value = false;
+  }
+};
+
 const syncFormFromSettings = () => {
   form.apiBaseUrl = plugin.settings.apiBaseUrl;
   form.language = plugin.settings.assistantDefaults.language;
@@ -56,6 +100,10 @@ const syncFormFromSettings = () => {
   form.showContextMenu = plugin.settings.showContextMenu;
   form.mentionNoteLimit = plugin.settings.mentionNoteLimit;
   form.duplicatePolicy = plugin.settings.duplicatePolicy;
+  form.transcriptionScene = plugin.settings.transcription.defaultScene;
+  form.transcriptionMicrophoneId = plugin.settings.transcription.defaultMicrophoneId;
+  form.transcriptionSaveAudio = plugin.settings.transcription.saveAudio;
+  form.transcriptionCompletionAction = plugin.settings.transcription.completionAction;
 };
 
 watch(
@@ -73,6 +121,10 @@ const save = async () => {
   const mentionNoteLimit = Math.max(0, Math.floor(Number(form.mentionNoteLimit || 0)));
   plugin.settings.mentionNoteLimit = Number.isFinite(mentionNoteLimit) ? mentionNoteLimit : 0;
   plugin.settings.duplicatePolicy = form.duplicatePolicy as typeof plugin.settings.duplicatePolicy;
+  plugin.settings.transcription.defaultScene = form.transcriptionScene as typeof plugin.settings.transcription.defaultScene;
+  plugin.settings.transcription.defaultMicrophoneId = form.transcriptionMicrophoneId;
+  plugin.settings.transcription.saveAudio = form.transcriptionSaveAudio;
+  plugin.settings.transcription.completionAction = form.transcriptionCompletionAction as typeof plugin.settings.transcription.completionAction;
   await plugin.saveSettings();
   setI18nLocale(plugin.settings.assistantDefaults.language);
   new Notice(t('common.settingsSaved'));
@@ -126,6 +178,8 @@ const importData = async (event: Event) => {
     new Notice(error?.message || t('settings.importFailed'));
   }
 };
+
+onMounted(() => void loadMicrophones(false));
 </script>
 
 <template>
@@ -179,6 +233,51 @@ const importData = async (event: Event) => {
             {{ t('settings.testConnection') }}
           </button>
         </footer>
+      </section>
+
+      <section class="wm-panel wm-settings-card">
+        <div class="wm-panel-title">
+          <MicrophoneIcon class="wm-panel-title-icon" />
+          <h3>{{ t('settings.transcriptionSection') }}</h3>
+        </div>
+        <p class="wm-muted">{{ t('settings.transcriptionDesc') }}</p>
+        <label>
+          <span class="wm-setting-label">{{ t('settings.transcriptionDefaultScene') }}</span>
+          <RekaSelect v-model="form.transcriptionScene" :options="transcriptionSceneOptions" />
+        </label>
+        <label>
+          <span class="wm-setting-label">{{ t('settings.transcriptionDefaultMicrophone') }}</span>
+          <div class="wm-transcription-device-row">
+            <RekaSelect
+              v-model="form.transcriptionMicrophoneId"
+              :options="microphoneOptions"
+              :placeholder="t('transcription.chooseMicrophone')"
+            />
+            <button
+              class="wm-button"
+              type="button"
+              :disabled="audioDevicesLoading"
+              @click="loadMicrophones(true)"
+            >
+              <ArrowPathIcon class="wm-icon" />
+              {{ t('common.refresh') }}
+            </button>
+          </div>
+        </label>
+        <label class="wm-checkbox-row">
+          <input v-model="form.transcriptionSaveAudio" type="checkbox" />
+          <span>
+            <strong>{{ t('settings.transcriptionSaveAudio') }}</strong>
+            <small class="wm-muted">{{ t('settings.transcriptionSaveAudioDesc') }}</small>
+          </span>
+        </label>
+        <label>
+          <span class="wm-setting-label">{{ t('settings.transcriptionCompletionAction') }}</span>
+          <RekaSelect
+            v-model="form.transcriptionCompletionAction"
+            :options="transcriptionCompletionOptions"
+          />
+        </label>
       </section>
 
       <section class="wm-panel wm-settings-card">

@@ -10,6 +10,7 @@
     GlobeAltIcon,
     HomeIcon,
     MagnifyingGlassIcon,
+    MicrophoneIcon,
     QuestionMarkCircleIcon,
   } from '@heroicons/vue/24/outline';
   import {openExternal} from 'obsidian';
@@ -36,6 +37,7 @@
   import SettingsPage from './pages/SettingsPage.vue';
   import SummaryPage from './pages/SummaryPage.vue';
   import SyncPage from './pages/SyncPage.vue';
+  import TranscriptionPage from './pages/TranscriptionPage.vue';
   import TutorialPage from './pages/TutorialPage.vue';
   import TaskHistoryDialog from './TaskHistoryDialog.vue';
   import WiseMindConnectionDialog from './WiseMindConnectionDialog.vue';
@@ -48,7 +50,7 @@
   provide(pluginKey, props.plugin);
   const {t} = useI18n();
 
-  type PageKey = 'home' | 'summary' | 'cards' | 'chat' | 'sync' | 'search' | 'settings' | 'tutorial';
+  type PageKey = 'home' | 'summary' | 'cards' | 'chat' | 'transcription' | 'sync' | 'search' | 'settings' | 'tutorial';
 
   const activePage = ref<PageKey>('home');
   const historyDialogOpen = ref(false);
@@ -65,6 +67,7 @@
     {key: 'summary' as const, labelKey: 'nav.summary', icon: DocumentTextIcon},
     {key: 'cards' as const, labelKey: 'nav.cards', icon: BookmarkSquareIcon},
     {key: 'chat' as const, labelKey: 'nav.chat', icon: ChatBubbleOvalLeftEllipsisIcon},
+    {key: 'transcription' as const, labelKey: 'nav.transcription', icon: MicrophoneIcon},
     {key: 'sync' as const, labelKey: 'nav.sync', icon: ArrowPathIcon},
     {key: 'search' as const, labelKey: 'nav.search', icon: MagnifyingGlassIcon},
   ];
@@ -141,6 +144,13 @@
     activePage.value = 'settings';
   };
 
+  const openExternalPage = (event: Event) => {
+    const page = String((event as CustomEvent)?.detail || '') as PageKey;
+    if (['home', 'summary', 'cards', 'chat', 'transcription', 'sync', 'search', 'settings'].includes(page)) {
+      activePage.value = page;
+    }
+  };
+
   const openOfficialWebsite = () => {
     const url = 'https://wisemindai.app';
     if (typeof openExternal === 'function') {
@@ -155,11 +165,13 @@
   onMounted(() => {
     window.addEventListener(WISEMIND_OPEN_CONNECTION_DIALOG_EVENT, openConnectionDialog);
     window.addEventListener(WISEMIND_OPEN_SETTINGS_EVENT, openSettingsPage);
+    window.addEventListener('wisemindai:open-page', openExternalPage);
   });
 
   onUnmounted(() => {
     window.removeEventListener(WISEMIND_OPEN_CONNECTION_DIALOG_EVENT, openConnectionDialog);
     window.removeEventListener(WISEMIND_OPEN_SETTINGS_EVENT, openSettingsPage);
+    window.removeEventListener('wisemindai:open-page', openExternalPage);
   });
 </script>
 
@@ -266,6 +278,9 @@
             :draft-new-session="chatDraft.newSession"
             @draft-consumed="clearChatDraft"
           />
+        </TabsContent>
+        <TabsContent value="transcription" class="wm-tab-content wm-transcription-tab-content">
+          <TranscriptionPage />
         </TabsContent>
         <TabsContent value="sync" class="wm-tab-content">
           <SyncPage

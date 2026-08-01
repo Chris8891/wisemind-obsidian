@@ -1,6 +1,11 @@
 import {openWiseMindConnectionDialog} from './services/connectionDialog';
 import {translate} from './i18n';
 import type {
+  TranscriptionDetail,
+  TranscriptionMembershipQuota,
+  TranscriptionOrganizeResult,
+  TranscriptionRecord,
+  TranscriptionStartOptions,
   WiseMindFolder,
   WiseMindLanguageSetting,
   WiseMindSnapshot,
@@ -8,6 +13,13 @@ import type {
 } from './types';
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+
+export type WiseMindHealth = {
+  ok?: boolean;
+  service?: string;
+  version?: string;
+  appVersion?: string;
+};
 
 type AssistantStreamEvent = {
   type?: 'delta' | 'final' | 'error' | 'done';
@@ -67,7 +79,7 @@ export class WiseMindApiClient {
     return translate(this.language(), key, params);
   }
 
-  async health() {
+  async health(): Promise<WiseMindHealth> {
     return this.request('/api/v2/health');
   }
 
@@ -284,6 +296,57 @@ export class WiseMindApiClient {
     return this.postData('/api/v2/cards/batch', payload);
   }
 
+  async getTranscriptionStartOptions() {
+    return this.getData<TranscriptionStartOptions>('/api/v2/transcriptions/start-options', {
+      showConnectionDialog: false,
+    });
+  }
+
+  async getTranscriptionMembership(recordId?: string) {
+    return this.getData<TranscriptionMembershipQuota>(
+      `/api/v2/transcriptions/membership${toQuery({recordId})}`,
+    );
+  }
+
+  async listTranscriptions(page = 1, pageSize = 20) {
+    return this.getData<{
+      items: TranscriptionRecord[];
+      page: number;
+      pageSize: number;
+      total: number;
+      hasMore: boolean;
+    }>(`/api/v2/transcriptions${toQuery({page, pageSize})}`);
+  }
+
+  async getTranscriptionDetail(recordId: string) {
+    return this.getData<TranscriptionDetail>(
+      `/api/v2/transcriptions/${encodeURIComponent(recordId)}`,
+    );
+  }
+
+  async organizeTranscription(recordId: string) {
+    return this.postData<{
+      record: TranscriptionRecord;
+      result: TranscriptionOrganizeResult;
+    }>(`/api/v2/transcriptions/${encodeURIComponent(recordId)}/organize`, {}, {timeoutMs: 120000});
+  }
+
+  async updateTranscriptionOrganization(
+    recordId: string,
+    result: TranscriptionOrganizeResult,
+  ) {
+    return this.postData<{
+      record: TranscriptionRecord;
+      result: TranscriptionOrganizeResult;
+    }>(`/api/v2/transcriptions/${encodeURIComponent(recordId)}/organization`, result, {
+      timeoutMs: 120000,
+    });
+  }
+
+  async openTranscriptions(recordId?: string) {
+    return this.openSource({type: 'transcription', ...(recordId ? {id: recordId} : {})});
+  }
+
   async loadSnapshot(): Promise<WiseMindSnapshot> {
     const [notes, noteFolders, documents, documentFolders, knowledgeBases] = await Promise.all([
       this.listNotes({includeFolders: true}),
@@ -309,8 +372,14 @@ export class WiseMindApiClient {
     };
   }
 
-  private async getData<T>(path: string, options: {signal?: AbortSignal} = {}): Promise<T> {
-    const response = await this.request(path, {}, {signal: options.signal});
+  private async getData<T>(
+    path: string,
+    options: {signal?: AbortSignal; showConnectionDialog?: boolean} = {},
+  ): Promise<T> {
+    const response = await this.request(path, {}, {
+      signal: options.signal,
+      showConnectionDialog: options.showConnectionDialog,
+    });
     return (response?.data ?? []) as T;
   }
 
@@ -458,7 +527,12 @@ export class WiseMindApiClient {
   private async request(
     path: string,
     init: RequestInit = {},
-    options: {timeoutMs?: number; requestBody?: unknown; signal?: AbortSignal} = {},
+    options: {
+      timeoutMs?: number;
+      requestBody?: unknown;
+      signal?: AbortSignal;
+      showConnectionDialog?: boolean;
+    } = {},
   ) {
     const controller = new AbortController();
     const timeoutMs = options.timeoutMs || this.timeoutMs;
@@ -517,7 +591,9 @@ export class WiseMindApiClient {
       return json;
     } catch (error: any) {
       if (error?.name === 'AbortError') {
-        if (!options.signal?.aborted) openWiseMindConnectionDialog();
+        if (!options.signal?.aborted && options.showConnectionDialog !== false) {
+          openWiseMindConnectionDialog();
+        }
         throw new WiseMindApiError(options.signal?.aborted
           ? this.t('apiErrors.aborted')
           : this.t('apiErrors.timeout', {seconds: Math.round(timeoutMs / 1000)}), undefined, {
@@ -528,7 +604,7 @@ export class WiseMindApiClient {
       if (error instanceof WiseMindApiError) {
         throw error;
       }
-      openWiseMindConnectionDialog();
+      if (options.showConnectionDialog !== false) openWiseMindConnectionDialog();
       throw new WiseMindApiError(error?.message || this.t('apiErrors.connectFailed'), undefined, {
         ...baseDebug,
         error: error?.message || 'network error',

@@ -34,6 +34,15 @@ export class WiseMindStatusBar {
     this.el.setText(this.t('statusBar.syncing'));
   }
 
+  setTranscribing(durationMs: number, paused = false) {
+    const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    this.el.setText(this.t(paused ? 'statusBar.transcriptionPaused' : 'statusBar.transcribing', {
+      duration: `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`,
+    }));
+  }
+
   setResult(result: SyncRunResult) {
     this.el.setText(this.t('statusBar.result', {
       count: result.created + result.updated + result.skipped,

@@ -143,6 +143,7 @@ declare module 'obsidian' {
     read(file: TFile): Promise<string>;
     create(path: string, data: string): Promise<TFile>;
     modify(file: TFile, data: string): Promise<void>;
+    process(file: TFile, callback: (data: string) => string): Promise<string>;
     createFolder(path: string): Promise<TFolder>;
     getAbstractFileByPath(path: string): TAbstractFile | null;
   }

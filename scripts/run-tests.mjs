@@ -1,6 +1,6 @@
+import { baseCompile } from '@intlify/message-compiler';
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
-import { baseCompile } from '@intlify/message-compiler';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readdir,readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -17,6 +17,10 @@ await build({
     'src/services/editorRewriteActions.ts',
     'src/services/chatInsertFormat.ts',
     'src/services/cardsMarkdown.ts',
+    'src/services/audioCapture.ts',
+    'src/services/transcriptionAvailability.ts',
+    'src/services/transcriptionLiveNoteContent.ts',
+    'src/services/transcriptionOrganization.ts',
     'src/quickActions.ts',
     'src/services/domRef.ts',
     'src/i18n/zh_CN.ts',
@@ -36,6 +40,16 @@ const syncPreviewHelpers = await import(pathToFileURL(join(helperOutdir, 'syncPr
 const editorRewriteHelpers = await import(pathToFileURL(join(helperOutdir, 'editorRewriteActions.js')));
 const chatInsertHelpers = await import(pathToFileURL(join(helperOutdir, 'chatInsertFormat.js')));
 const cardsMarkdownHelpers = await import(pathToFileURL(join(helperOutdir, 'cardsMarkdown.js')));
+const audioCaptureHelpers = await import(pathToFileURL(join(helperOutdir, 'audioCapture.js')));
+const transcriptionAvailabilityHelpers = await import(
+  pathToFileURL(join(helperOutdir, 'transcriptionAvailability.js'))
+);
+const transcriptionLiveNoteContentHelpers = await import(
+  pathToFileURL(join(helperOutdir, 'transcriptionLiveNoteContent.js'))
+);
+const transcriptionOrganizationHelpers = await import(
+  pathToFileURL(join(helperOutdir, 'transcriptionOrganization.js'))
+);
 const quickActionHelpers = await import(pathToFileURL(join(helperOutdir, 'quickActions.js')));
 const domRefHelpers = await import(pathToFileURL(join(helperOutdir, 'domRef.js')));
 const zhCNMessages = (await import(pathToFileURL(join(helperOutdir, 'zh_CN.js')))).default;
@@ -90,6 +104,233 @@ test('context menu defaults hidden and only registers actions when enabled', asy
   assert.match(settingsSource, /raw\?\.showContextMenu === true/);
   assert.match(mainSource, /if \(!this\.settings\.showContextMenu\) return;/);
   assert.match(mainSource, /on\('files-menu'/);
+});
+
+test('transcription defaults keep official records in WiseMindAI and avoid automatic note writes', async () => {
+  const settingsSource = await readFile('src/settings.ts', 'utf8');
+
+  assert.match(settingsSource, /defaultScene: 'meeting'/);
+  assert.match(settingsSource, /defaultMicrophoneId: 'default'/);
+  assert.match(settingsSource, /saveAudio: false/);
+  assert.match(settingsSource, /completionAction: 'ask'/);
+});
+
+test('transcription lives in the plugin shell and controller instead of the page lifecycle', async () => {
+  const panelSource = await readFile('src/components/PanelApp.vue', 'utf8');
+  const pageSource = await readFile('src/components/pages/TranscriptionPage.vue', 'utf8');
+  const mainSource = await readFile('src/main.ts', 'utf8');
+  const apiSource = await readFile('src/wisemindApi.ts', 'utf8');
+  const localApiCommonSource = await readFile(
+    '../main/src/service/localApiServer/handlers/common.ts',
+    'utf8',
+  );
+  const localApiTranscriptionSource = await readFile(
+    '../main/src/service/localApiServer/handlers/transcriptions.ts',
+    'utf8',
+  );
+  const controllerSource = await readFile('src/services/transcriptionController.ts', 'utf8');
+
+  assert.match(panelSource, /value="transcription"/);
+  assert.match(panelSource, /<TranscriptionPage/);
+  assert.match(panelSource, /wm-transcription-tab-content/);
+  assert.match(mainSource, /new TranscriptionController/);
+  assert.doesNotMatch(pageSource, /controller\.dispose\(\)/);
+  assert.match(pageSource, /testRecording/);
+  assert.match(pageSource, /viewAllRecords/);
+  assert.match(pageSource, /markHighlightSuccess/);
+  assert.match(pageSource, /wm-transcription-complete-footer/);
+  assert.match(pageSource, /liveWriteToNote/);
+  assert.match(pageSource, /<RekaSwitch/);
+  assert.match(pageSource, /startOptions && providerOptions\.length === 0/);
+  assert.match(pageSource, /transcription\.providerSetupHint/);
+  assert.match(pageSource, /createDefaultRecordTitle/);
+  assert.match(pageSource, /transcription\.defaultRecordTitle/);
+  assert.match(pageSource, /completionView === 'summary'/);
+  assert.match(pageSource, /organizeCompletedRecord/);
+  assert.match(pageSource, /copyCompletedTranscript/);
+  assert.match(pageSource, /recordsOpened/);
+  assert.match(pageSource, /wm-transcription-start-button/);
+  assert.match(pageSource, /const health = await plugin\.api\.health\(\)/);
+  assert.match(pageSource, /isTranscriptionVersionSupported\(health\.appVersion\)/);
+  assert.match(apiSource, /getTranscriptionStartOptions[\s\S]+showConnectionDialog: false/);
+  assert.match(apiSource, /organizeTranscription[\s\S]+\/organize/);
+  assert.match(apiSource, /updateTranscriptionOrganization[\s\S]+\/organization/);
+  assert.match(controllerSource, /getTranscriptionMembership\(detail\.record\.id\)/);
+  assert.match(controllerSource, /quota\.canGenerateSummary/);
+  assert.match(controllerSource, /summarizeContent/);
+  assert.match(controllerSource, /style: 'structured'/);
+  assert.match(controllerSource, /catch \{[\s\S]+organizeTranscription/);
+  assert.match(localApiCommonSource, /appVersion: app\.getVersion\(\)/);
+  assert.match(localApiTranscriptionSource, /assertOrganizationAllowed\(params\.id\)/);
+  assert.match(localApiTranscriptionSource, /updateOrganization\(params\.id/);
+  assert.equal(
+    zhCNMessages.transcription.defaultRecordTitle,
+    '来自 Obsidian {date}',
+  );
+  assert.equal(
+    enUSMessages.transcription.defaultRecordTitle,
+    'From Obsidian {date}',
+  );
+});
+
+test('live transcription note content appends finalized segments once and replaces its own block', () => {
+  const recordId = 'tr-live-test';
+  const block = transcriptionLiveNoteContentHelpers.createLiveTranscriptionBlock(recordId, '逐字稿');
+  const initial = `# 会议笔记\n\n${block}\n`;
+  const segment = {
+    id: 'segment-1',
+    recordId,
+    text: '这是已经确认的转录内容。',
+    isFinal: true,
+    beginTimeMs: 3_000,
+    sortOrder: 1,
+    created_at: 1,
+    updated_at: 1,
+  };
+  const appended = transcriptionLiveNoteContentHelpers.appendLiveTranscriptionSegments(
+    initial,
+    recordId,
+    [segment],
+  );
+  const appendedAgain = transcriptionLiveNoteContentHelpers.appendLiveTranscriptionSegments(
+    appended,
+    recordId,
+    [segment],
+  );
+
+  assert.equal(appendedAgain, appended);
+  assert.match(appended, /\*\*00:03\*\*/);
+  assert.equal((appended.match(/segment-1/g) || []).length, 1);
+
+  const finalized = transcriptionLiveNoteContentHelpers.replaceLiveTranscriptionBlock(
+    appended,
+    recordId,
+    `# 会议转录\n\n<!-- wisemind:transcription id="${recordId}" -->\n\n完成`,
+  );
+  assert.match(finalized, /wisemind:transcription id="tr-live-test"/);
+  assert.doesNotMatch(finalized, /transcription-live/);
+  assert.match(finalized, /^# 会议笔记/);
+});
+
+test('live transcription note content ignores partial text and restores confirmed segment order', () => {
+  const recordId = 'tr-live-order-test';
+  const initial = createLiveNoteFixture(recordId);
+  const segment = (id, text, sortOrder, isFinal = true) => ({
+    id,
+    recordId,
+    text,
+    isFinal,
+    beginTimeMs: sortOrder * 1_000,
+    sortOrder,
+    created_at: 1,
+    updated_at: 1,
+  });
+  const appended = transcriptionLiveNoteContentHelpers.appendLiveTranscriptionSegments(
+    initial,
+    recordId,
+    [
+      segment('segment-2', '第二段', 2),
+      segment('segment-partial', '尚未确认', 0, false),
+      segment('segment-1', '第一段', 1),
+    ],
+  );
+
+  assert.ok(appended.indexOf('第一段') < appended.indexOf('第二段'));
+  assert.doesNotMatch(appended, /尚未确认/);
+});
+
+test('transcription controller avoids duplicate segments and duplicate note completion writes', async () => {
+  const controllerSource = await readFile('src/services/transcriptionController.ts', 'utf8');
+  const pageSource = await readFile('src/components/pages/TranscriptionPage.vue', 'utf8');
+  const writerSource = await readFile('src/services/transcriptionLiveNoteWriter.ts', 'utf8');
+
+  assert.match(controllerSource, /segmentIds\.has\(event\.segment\.id\)/);
+  assert.match(controllerSource, /if \(!event\.segment\.isFinal\)/);
+  assert.match(controllerSource, /writer\.disable\(error\)/);
+  assert.match(controllerSource, /liveNoteWriteStatus !== 'completed'/);
+  assert.match(pageSource, /isCurrentNoteAlreadyWritten/);
+  assert.match(pageSource, /v-memo=/);
+  assert.match(pageSource, /scheduleScrollToLatest/);
+  assert.match(pageSource, /handleLiveWriteToggle/);
+  assert.match(pageSource, /refreshActiveFile/);
+  assert.match(pageSource, /vault\.on\?\.\('rename'/);
+  assert.match(writerSource, /vault\.on\?\.\('rename'/);
+  assert.match(writerSource, /oldPath !== this\.targetPathValue/);
+  assert.match(writerSource, /currentFile\.stat\.ctime !== this\.createdAt/);
+  assert.doesNotMatch(writerSource, /currentFile !== this\.file/);
+});
+
+test('transcription availability distinguishes old clients from stopped clients', () => {
+  assert.equal(transcriptionAvailabilityHelpers.MINIMUM_TRANSCRIPTION_VERSION, '1.3.1');
+  assert.equal(transcriptionAvailabilityHelpers.isTranscriptionVersionSupported(undefined), false);
+  assert.equal(transcriptionAvailabilityHelpers.isTranscriptionVersionSupported('1.3.0'), false);
+  assert.equal(transcriptionAvailabilityHelpers.isTranscriptionVersionSupported('1.3.1-beta.1'), false);
+  assert.equal(transcriptionAvailabilityHelpers.isTranscriptionVersionSupported('1.3.1'), true);
+  assert.equal(transcriptionAvailabilityHelpers.isTranscriptionVersionSupported('v1.3.2'), true);
+  assert.equal(transcriptionAvailabilityHelpers.isTranscriptionVersionSupported('2.0.0-beta.1'), true);
+  assert.match(
+    zhCNMessages.transcription.compatibility.unsupportedDesc,
+    /v\{version\}/,
+  );
+  assert.match(
+    enUSMessages.transcription.compatibility.unsupportedDesc,
+    /v\{version\}/,
+  );
+  assert.equal(
+    transcriptionAvailabilityHelpers.classifyTranscriptionAvailabilityError({status: 404}),
+    'unsupported',
+  );
+  assert.equal(
+    transcriptionAvailabilityHelpers.classifyTranscriptionAvailabilityError(new Error('offline')),
+    'not-running',
+  );
+  assert.equal(
+    transcriptionAvailabilityHelpers.classifyTranscriptionAvailabilityError({status: 500}),
+    'error',
+  );
+});
+
+test('transcription organization separates summary, key points, todos, and ignores tags', () => {
+  const result = transcriptionOrganizationHelpers.parseTranscriptionOrganizationMarkdown(`
+### 摘要
+项目将在本周完成上线。
+### 关键要点
+- 周一完成测试
+- 周三发布
+### 行动建议
+- 确认发布检查清单
+### 标签
+#项目
+  `);
+
+  assert.equal(result.summary, '项目将在本周完成上线。');
+  assert.match(result.keyPoints, /周一完成测试/);
+  assert.match(result.todos, /确认发布检查清单/);
+  assert.doesNotMatch(JSON.stringify(result), /#项目/);
+
+  assert.deepEqual(
+    transcriptionOrganizationHelpers.parseTranscriptionOrganizationMarkdown('Plain summary'),
+    {summary: 'Plain summary', keyPoints: '', todos: ''},
+  );
+});
+
+function createLiveNoteFixture(recordId) {
+  return `# 会议笔记\n\n${transcriptionLiveNoteContentHelpers.createLiveTranscriptionBlock(recordId, '逐字稿')}\n`;
+}
+
+test('microphone test WAV output has a valid PCM header and payload length', async () => {
+  const blob = audioCaptureHelpers.pcm16ChunksToWavBlob([
+    new Uint8Array([1, 2, 3, 4]),
+    new Uint8Array([5, 6]),
+  ]);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const text = (start, length) => String.fromCharCode(...bytes.slice(start, start + length));
+
+  assert.equal(text(0, 4), 'RIFF');
+  assert.equal(text(8, 4), 'WAVE');
+  assert.equal(text(36, 4), 'data');
+  assert.equal(new DataView(bytes.buffer).getUint32(40, true), 6);
+  assert.equal(bytes.length, 50);
 });
 
 test('file explorer context menu resolves Markdown files from files, folders, and root', () => {
