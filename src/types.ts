@@ -37,6 +37,7 @@ export type TranscriptionMembershipQuota = {
   isPro: boolean;
   canStart: boolean;
   canGenerateSummary: boolean;
+  canUseSpeakerDiarization: boolean;
   sessionLimitMinutes: number | null;
   monthlyLimitMinutes: number | null;
   monthlyUsedMs: number;
@@ -55,6 +56,7 @@ export type TranscriptionStartOptions = {
     providerType: string;
     name: string;
     modelName: string;
+    supportsSpeakerDiarization: boolean;
   }>;
   membership: TranscriptionMembershipQuota;
 };
@@ -66,6 +68,9 @@ export type TranscriptionRecord = {
   status: TranscriptionStatus;
   provider: string;
   model: string;
+  workspaceId?: string | null;
+  speakerDiarization?: boolean;
+  speakerCount?: number;
   durationMs: number;
   wordCount: number;
   saveAudio: boolean;
@@ -86,14 +91,46 @@ export type TranscriptionSegment = {
   isFinal: boolean;
   beginTimeMs?: number;
   endTimeMs?: number;
+  speakerId?: string;
+  providerSpeakerId?: string;
+  speakerLabel?: string;
+  speakerConfidence?: number;
+  speakerSource?: 'provider' | 'local' | 'reference' | 'user';
   sortOrder: number;
   created_at: number;
   updated_at: number;
 };
 
+export type TranscriptionSegmentUpdate = {
+  id: string;
+  speakerId?: string;
+  speakerLabel?: string;
+  speakerSource?: TranscriptionSegment['speakerSource'];
+};
+
 export type TranscriptionDetail = {
   record: TranscriptionRecord;
   segments: TranscriptionSegment[];
+};
+
+export type TranscriptionHistoryItem = {
+  id: string;
+  title: string;
+  scenario: TranscriptionScene;
+  provider: string;
+  model: string;
+  workspaceId?: string | null;
+  durationMs: number;
+  wordCount: number;
+  speakerDiarization: boolean;
+  speakerCount: number;
+  summary: string;
+  keyPoints: string;
+  todos: string;
+  segments: TranscriptionSegment[];
+  startedAt?: number;
+  createdAt: number;
+  cachedAt: number;
 };
 
 export type TranscriptionOrganizeResult = {
@@ -211,6 +248,7 @@ export type WiseMindImportSettings = {
   contextMenuRecents: WiseMindContextMenuRecents;
   assistantDefaults: WiseMindAssistantDefaults;
   transcription: WiseMindTranscriptionSettings;
+  transcriptionHistory: TranscriptionHistoryItem[];
   assistantSummaryHistory: AssistantSummaryHistoryItem[];
   assistantCardHistory: AssistantCardHistoryItem[];
   assistantChatSessions: AssistantChatSession[];

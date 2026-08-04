@@ -21,6 +21,7 @@ await build({
     'src/services/transcriptionAvailability.ts',
     'src/services/transcriptionLiveNoteContent.ts',
     'src/services/transcriptionOrganization.ts',
+    'src/services/transcriptionHistory.ts',
     'src/quickActions.ts',
     'src/services/domRef.ts',
     'src/i18n/zh_CN.ts',
@@ -49,6 +50,9 @@ const transcriptionLiveNoteContentHelpers = await import(
 );
 const transcriptionOrganizationHelpers = await import(
   pathToFileURL(join(helperOutdir, 'transcriptionOrganization.js'))
+);
+const transcriptionHistoryHelpers = await import(
+  pathToFileURL(join(helperOutdir, 'transcriptionHistory.js'))
 );
 const quickActionHelpers = await import(pathToFileURL(join(helperOutdir, 'quickActions.js')));
 const domRefHelpers = await import(pathToFileURL(join(helperOutdir, 'domRef.js')));
@@ -258,6 +262,77 @@ test('transcription controller avoids duplicate segments and duplicate note comp
   assert.match(writerSource, /oldPath !== this\.targetPathValue/);
   assert.match(writerSource, /currentFile\.stat\.ctime !== this\.createdAt/);
   assert.doesNotMatch(writerSource, /currentFile !== this\.file/);
+});
+
+test('Obsidian transcription history keeps a compact, deduplicated local cache', () => {
+  const detail = {
+    record: {
+      id: 'tr-history-1',
+      title: 'History test',
+      scenario: 'meeting',
+      status: 'pending',
+      provider: 'test',
+      model: 'test-model',
+      durationMs: 12_000,
+      wordCount: 4,
+      saveAudio: true,
+      summary: 'Summary',
+      keyPoints: 'Key point',
+      todos: '',
+      created_at: 100,
+      updated_at: 120,
+    },
+    segments: [
+      {
+        id: 'segment-history-1',
+        recordId: 'tr-history-1',
+        text: 'Test text',
+        isFinal: true,
+        speakerId: 'speaker-2',
+        sortOrder: 0,
+        created_at: 100,
+        updated_at: 100,
+      },
+    ],
+  };
+  const first = transcriptionHistoryHelpers.upsertTranscriptionHistory([], detail, 200);
+  const second = transcriptionHistoryHelpers.upsertTranscriptionHistory(first, {
+    ...detail,
+    record: {...detail.record, summary: 'Updated summary'},
+  }, 300);
+
+  assert.equal(second.length, 1);
+  assert.equal(second[0].summary, 'Updated summary');
+  assert.equal(second[0].segments[0].speakerId, 'speaker-2');
+  const restored = transcriptionHistoryHelpers.transcriptionHistoryToDetail(second[0]);
+  assert.equal(restored.record.id, 'tr-history-1');
+  assert.equal(restored.record.saveAudio, false);
+  assert.equal(restored.segments[0].text, 'Test text');
+});
+
+test('Obsidian transcription starts the recognition connection and provides a protocol fallback', async () => {
+  const socketServerSource = await readFile(
+    '../main/src/service/localApiServer/transcriptionSocket.ts',
+    'utf8',
+  );
+  const apiSource = await readFile('src/wisemindApi.ts', 'utf8');
+  const pageSource = await readFile('src/components/pages/TranscriptionPage.vue', 'utf8');
+  const localApiTranscriptionSource = await readFile(
+    '../main/src/service/localApiServer/handlers/transcriptions.ts',
+    'utf8',
+  );
+
+  assert.match(socketServerSource, /subscribe\(socket, record\.id\);[\s\S]+service\.connect\(record\.id\)/);
+  assert.match(apiSource, /openExternal\(buildWiseMindDeepLink\(payload\)\)/);
+  assert.match(apiSource, /wisemindai:\/\/open/);
+  assert.match(pageSource, /transcription\.history/);
+  assert.match(pageSource, /speakerDiarization/);
+  assert.match(pageSource, /segment\.speakerLabel/);
+  assert.match(pageSource, /manageSpeakers/);
+  assert.match(pageSource, /assignCompletedSpeaker/);
+  assert.match(apiSource, /updateTranscriptionSegments[\s\S]+\/segments/);
+  assert.match(localApiTranscriptionSource, /updateSegments\(params\.id/);
+  assert.doesNotMatch(pageSource, /class="wm-transcription-quota"/);
 });
 
 test('transcription availability distinguishes old clients from stopped clients', () => {

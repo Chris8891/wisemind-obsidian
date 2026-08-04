@@ -16,8 +16,21 @@ export const transcriptionMarkdown = (
   detail: TranscriptionDetail,
 ) => {
   const {record, segments} = detail;
+  const language = plugin.settings.assistantDefaults.language;
   const transcript = normalizeConfirmedTranscriptionSegments(segments)
-    .map(segment => `**${formatTranscriptionTime(segment.beginTimeMs)}**\n\n${segment.text.trim()}`)
+    .map(segment => {
+      const speakerNumber = Number(String(segment.speakerId || '').match(/(\d+)$/)?.[1] || 0);
+      const speaker =
+        segment.speakerLabel?.trim() ||
+        (speakerNumber
+          ? translate(language, 'transcription.speakerName', {number: speakerNumber})
+          : '');
+      return [
+        `**${formatTranscriptionTime(segment.beginTimeMs)}${speaker ? ` · ${speaker}` : ''}**`,
+        '',
+        segment.text.trim(),
+      ].join('\n');
+    })
     .join('\n\n');
   const sections = [
     `# ${record.title}`,
@@ -25,7 +38,6 @@ export const transcriptionMarkdown = (
     `<!-- wisemind:transcription id="${record.id}" -->`,
     '',
   ];
-  const language = plugin.settings.assistantDefaults.language;
   if (record.summary?.trim()) {
     sections.push(`## ${translate(language, 'transcription.noteSections.summary')}`, '', record.summary.trim(), '');
   }

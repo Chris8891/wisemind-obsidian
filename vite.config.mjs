@@ -62,7 +62,7 @@ export default defineConfig({
       fileName: () => 'main.js',
     },
     rollupOptions: {
-      external: ['obsidian', 'node:fs/promises'],
+      external: ['electron', 'obsidian', 'node:fs/promises'],
       output: {
         exports: 'default',
         inlineDynamicImports: true,

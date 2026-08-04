@@ -181,7 +181,11 @@
       <TabsList class="wm-nav" aria-label="WiseMindAI">
         <div class="wm-nav-main">
           <WmTooltip :content="t('nav.home')" side="right">
-            <TabsTrigger class="wm-nav-item wm-nav-logo" value="home">
+            <TabsTrigger
+              class="wm-nav-item wm-nav-logo"
+              :class="{'is-active': activePage === 'home'}"
+              value="home"
+            >
               <span class="wm-logo-mark" v-html="wiseMindLogoIcon"></span>
               <span>{{ t('nav.home') }}</span>
             </TabsTrigger>
@@ -192,7 +196,12 @@
             :content="t(item.labelKey)"
             side="right"
           >
-            <TabsTrigger class="wm-nav-item" :value="item.key" @click="openPage(item.key)">
+            <TabsTrigger
+              class="wm-nav-item"
+              :class="{'is-active': activePage === item.key}"
+              :value="item.key"
+              @click="openPage(item.key)"
+            >
               <component :is="item.icon" class="wm-icon" />
               <span>{{ t(item.labelKey) }}</span>
             </TabsTrigger>
@@ -206,13 +215,22 @@
             :content="t(item.labelKey)"
             side="right"
           >
-            <TabsTrigger class="wm-nav-item" :value="item.key">
+            <TabsTrigger
+              class="wm-nav-item"
+              :class="{'is-active': activePage === item.key}"
+              :value="item.key"
+            >
               <component :is="item.icon" class="wm-icon" />
               <span>{{ t(item.labelKey) }}</span>
             </TabsTrigger>
           </WmTooltip>
           <WmTooltip :content="t('nav.tutorial')" side="right">
-            <button class="wm-nav-item" type="button" @click="activePage = 'tutorial'">
+            <button
+              class="wm-nav-item"
+              :class="{'is-active': activePage === 'tutorial'}"
+              type="button"
+              @click="activePage = 'tutorial'"
+            >
               <QuestionMarkCircleIcon class="wm-icon" />
               <span>{{ t('nav.tutorial') }}</span>
             </button>

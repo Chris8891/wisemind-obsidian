@@ -11,6 +11,9 @@ declare module 'obsidian' {
   export function addIcon(iconId: string, svgContent: string): void;
   export function setIcon(parent: HTMLElement, iconId: string): void;
   export function openExternal(url: string): Promise<void>;
+  export const Platform: {
+    isMacOS: boolean;
+  };
   export const moment: {
     locale(): string;
   };

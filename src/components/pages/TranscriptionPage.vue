@@ -3,7 +3,10 @@
   import {useI18n} from 'vue-i18n';
   import {
     ArrowPathIcon,
+    CheckIcon,
     CheckCircleIcon,
+    ChevronRightIcon,
+    ClockIcon,
     ClipboardDocumentIcon,
     DocumentArrowDownIcon,
     DocumentPlusIcon,
@@ -16,6 +19,8 @@
     SparklesIcon,
     Square2StackIcon,
     StopIcon,
+    UserGroupIcon,
+    XMarkIcon,
   } from '@heroicons/vue/24/outline';
   import {Notice, TFile} from 'obsidian';
 
@@ -37,11 +42,13 @@
   import type {
     TranscriptionMarkKind,
     TranscriptionScene,
+    TranscriptionSegment,
     TranscriptionStartOptions,
   } from '../../types';
   import MarkdownView from '../MarkdownView.vue';
   import RekaSelect from '../RekaSelect.vue';
   import RekaSwitch from '../RekaSwitch.vue';
+  import WmDialog from '../WmDialog.vue';
 
   const plugin = usePlugin();
   const {t} = useI18n();
@@ -63,6 +70,13 @@
   const starting = ref(false);
   const organizing = ref(false);
   const openingRecords = ref(false);
+  const historyDialogOpen = ref(false);
+  const historyItems = ref([...plugin.settings.transcriptionHistory]);
+  const speakerDialogOpen = ref(false);
+  const speakerSaving = ref(false);
+  const assigningSpeakerSegmentId = ref('');
+  const speakerNames = ref<Record<string, string>>({});
+  const speakerMergeTargets = ref<Record<string, string>>({});
   const completionView = ref<'transcript' | 'summary'>('transcript');
   const initialRecordTitle = createDefaultRecordTitle();
   const form = ref({
@@ -71,6 +85,8 @@
     providerId: plugin.settings.transcription.defaultProviderId,
     deviceId: plugin.settings.transcription.defaultMicrophoneId,
     saveAudio: plugin.settings.transcription.saveAudio,
+    speakerDiarization: false,
+    speakerCount: '0',
     liveWriteToNote: false,
   });
   const microphoneTestStatus = ref<'idle' | 'recording' | 'complete' | 'error'>('idle');
@@ -109,7 +125,10 @@
     if (!detail) return '';
     const transcript = detail.segments
       .filter(segment => segment.text.trim())
-      .map(segment => `${formatDuration(segment.beginTimeMs || 0)}  ${segment.text.trim()}`)
+      .map(segment => {
+        const speaker = segmentSpeakerLabel(segment);
+        return `${formatDuration(segment.beginTimeMs || 0)}${speaker ? `  ${speaker}` : ''}  ${segment.text.trim()}`;
+      })
       .join('\n\n');
     return `${detail.record.title}\n\n${transcript}`.trim();
   });
@@ -161,20 +180,6 @@
       description: t('transcription.compatibility.unavailableDesc'),
     };
   });
-  const quotaText = computed(() => {
-    const quota = startOptions.value?.membership;
-    if (!quota) return t('transcription.quotaLoading');
-    if (quota.monthlyRemainingMs == null) {
-      return quota.sessionLimitMinutes == null
-        ? t('transcription.quotaUnlimited')
-        : t('transcription.quotaSessionOnly', {minutes: quota.sessionLimitMinutes});
-    }
-    return t('transcription.quotaRemaining', {
-      remaining: Math.max(0, Math.ceil(quota.monthlyRemainingMs / 60_000)),
-      session: quota.sessionLimitMinutes ?? t('transcription.unlimited'),
-    });
-  });
-
   const sceneOptions = computed(() =>
     ['meeting', 'class', 'interview', 'idea', 'other'].map(value => ({
       value,
@@ -187,6 +192,45 @@
       label: `${provider.name}${provider.modelName ? ` · ${provider.modelName}` : ''}`,
     })),
   );
+  const currentProvider = computed(() =>
+    startOptions.value?.providers.find(provider => provider.id === form.value.providerId),
+  );
+  const speakerCountOptions = computed(() => [
+    {value: '0', label: t('transcription.speakerCountAuto')},
+    ...Array.from({length: 9}, (_, index) => ({
+      value: String(index + 2),
+      label: t('transcription.speakerCountValue', {count: index + 2}),
+    })),
+  ]);
+  const completedSpeakers = computed(() => {
+    const speakers = new Map<
+      string,
+      {id: string; name: string; segmentCount: number; durationMs: number}
+    >();
+    for (const segment of state.completedDetail?.segments || []) {
+      const id = String(segment.speakerId || '').trim();
+      if (!id) continue;
+      const name = segmentSpeakerLabel(segment);
+      const durationMs = Math.max(
+        0,
+        Number(segment.endTimeMs || segment.beginTimeMs || 0) -
+          Number(segment.beginTimeMs || 0),
+      );
+      const existing = speakers.get(id);
+      if (existing) {
+        existing.segmentCount += 1;
+        existing.durationMs += durationMs;
+        if (segment.speakerLabel?.trim()) existing.name = name;
+      } else {
+        speakers.set(id, {id, name, segmentCount: 1, durationMs});
+      }
+    }
+    return [...speakers.values()].sort((a, b) => {
+      const numberA = Number(a.id.match(/(\d+)$/)?.[1] || Number.MAX_SAFE_INTEGER);
+      const numberB = Number(b.id.match(/(\d+)$/)?.[1] || Number.MAX_SAFE_INTEGER);
+      return numberA - numberB || a.id.localeCompare(b.id);
+    });
+  });
   const microphoneOptions = computed(() => {
     const options = audioDevices.value.map((device, index) => ({
       value: device.deviceId,
@@ -209,6 +253,105 @@
         ).padStart(2, '0')}`
       : `${String(minutes).padStart(2, '0')}:${String(remain).padStart(2, '0')}`;
   }
+
+  const segmentSpeakerLabel = (segment: TranscriptionSegment) => {
+    if (segment.speakerLabel?.trim()) return segment.speakerLabel.trim();
+    const number = Number(String(segment.speakerId || '').match(/(\d+)$/)?.[1] || 0);
+    return number ? t('transcription.speakerName', {number}) : '';
+  };
+
+  const openSpeakerManager = () => {
+    speakerNames.value = Object.fromEntries(
+      completedSpeakers.value.map(speaker => [speaker.id, speaker.name]),
+    );
+    speakerMergeTargets.value = Object.fromEntries(
+      completedSpeakers.value.map(speaker => [speaker.id, '']),
+    );
+    speakerDialogOpen.value = true;
+  };
+
+  const resolveSpeakerMergeTarget = (speakerId: string) => {
+    const visited = new Set([speakerId]);
+    let targetId = String(speakerMergeTargets.value[speakerId] || '').trim();
+    while (targetId) {
+      if (visited.has(targetId)) return '';
+      visited.add(targetId);
+      const next = String(speakerMergeTargets.value[targetId] || '').trim();
+      if (!next) return targetId;
+      targetId = next;
+    }
+    return speakerId;
+  };
+
+  const saveSpeakerChanges = async () => {
+    const detail = state.completedDetail;
+    if (!detail || speakerSaving.value) return;
+    const speakerById = new Map(completedSpeakers.value.map(speaker => [speaker.id, speaker]));
+    for (const speaker of completedSpeakers.value) {
+      if (!resolveSpeakerMergeTarget(speaker.id)) {
+        new Notice(t('transcription.speakerMergeCycle'));
+        return;
+      }
+    }
+    const updates = detail.segments.flatMap(segment => {
+      const sourceId = String(segment.speakerId || '').trim();
+      if (!sourceId) return [];
+      const targetId = resolveSpeakerMergeTarget(sourceId);
+      const target = speakerById.get(targetId);
+      const label = String(speakerNames.value[targetId] || target?.name || '').trim();
+      if (!label) return [];
+      if (
+        targetId === sourceId &&
+        label === String(segment.speakerLabel || segmentSpeakerLabel(segment)).trim()
+      ) {
+        return [];
+      }
+      return [
+        {
+          id: segment.id,
+          speakerId: targetId,
+          speakerLabel: label,
+          speakerSource: 'user' as const,
+        },
+      ];
+    });
+    if (!updates.length) {
+      speakerDialogOpen.value = false;
+      return;
+    }
+    speakerSaving.value = true;
+    try {
+      await controller.updateCompletedSpeakers(updates);
+      speakerDialogOpen.value = false;
+      new Notice(t('transcription.speakerSaved'));
+    } catch (error: any) {
+      new Notice(error?.message || t('transcription.speakerSaveFailed'));
+    } finally {
+      speakerSaving.value = false;
+    }
+  };
+
+  const assignCompletedSpeaker = async (segment: TranscriptionSegment, speakerId: string) => {
+    if (!speakerId || segment.speakerId === speakerId || assigningSpeakerSegmentId.value) return;
+    const speaker = completedSpeakers.value.find(item => item.id === speakerId);
+    if (!speaker) return;
+    assigningSpeakerSegmentId.value = segment.id;
+    try {
+      await controller.updateCompletedSpeakers([
+        {
+          id: segment.id,
+          speakerId,
+          speakerLabel: speaker.name,
+          speakerSource: 'user',
+        },
+      ]);
+      new Notice(t('transcription.speakerAssigned'));
+    } catch (error: any) {
+      new Notice(error?.message || t('transcription.speakerSaveFailed'));
+    } finally {
+      assigningSpeakerSegmentId.value = '';
+    }
+  };
 
   const refreshActiveFile = (candidate = plugin.app.workspace.getActiveFile()) => {
     activeFile.value = candidate;
@@ -300,6 +443,8 @@
         providerId: form.value.providerId,
         deviceId: form.value.deviceId,
         saveAudio: form.value.saveAudio,
+        speakerDiarization: form.value.speakerDiarization,
+        speakerCount: Number(form.value.speakerCount || 0),
         targetPath: liveTargetFile?.path || activeMarkdownPath.value,
         liveWriteToNote: form.value.liveWriteToNote,
       });
@@ -344,7 +489,21 @@
       openingRecords.value = false;
     }
   };
-  const openCurrentRecord = () => runAction(() => plugin.api.openTranscriptions(state.record?.id));
+  const openCurrentRecord = () =>
+    runAction(() =>
+      plugin.api.openTranscriptions(state.completedDetail?.record.id || state.record?.id),
+    );
+  const openHistory = () => {
+    historyItems.value = [...(plugin.settings.transcriptionHistory || [])].sort(
+      (a, b) => b.createdAt - a.createdAt,
+    );
+    historyDialogOpen.value = true;
+  };
+  const showHistoryItem = (item: (typeof historyItems.value)[number]) => {
+    if (!controller.showCachedHistory(item)) return;
+    completionView.value = item.summary || item.keyPoints || item.todos ? 'summary' : 'transcript';
+    historyDialogOpen.value = false;
+  };
   const organizeCompletedRecord = async () => {
     if (organizing.value || hasGeneratedSummary.value || !hasCompletedTranscript.value) return;
     organizing.value = true;
@@ -448,6 +607,7 @@
   };
 
   const reset = async () => {
+    speakerDialogOpen.value = false;
     controller.reset();
     autoGeneratedTitle = createDefaultRecordTitle();
     form.value.title = autoGeneratedTitle;
@@ -458,6 +618,13 @@
 
   watch(activeMarkdownPath, path => {
     if (!path) form.value.liveWriteToNote = false;
+  });
+
+  watch(currentProvider, provider => {
+    if (!provider?.supportsSpeakerDiarization) {
+      form.value.speakerDiarization = false;
+      form.value.speakerCount = '0';
+    }
   });
 
   watch(() => [state.segments.length, state.partialText] as const, scheduleScrollToLatest, {
@@ -530,11 +697,17 @@
           <p class="wm-muted">{{ t('transcription.subtitle') }}</p>
         </div>
       </div>
-      <button class="wm-button" type="button" :disabled="openingRecords" @click="openAllRecords">
-        <span v-if="openingRecords" class="wm-loading-spinner"></span>
-        <ListBulletIcon v-else class="wm-icon" />
-        {{ openingRecords ? t('transcription.openingRecords') : t('transcription.viewAllRecords') }}
-      </button>
+      <div class="wm-actions">
+        <button class="wm-button" type="button" @click="openHistory">
+          <ClockIcon class="wm-icon" />
+          {{ t('transcription.history') }}
+        </button>
+        <button class="wm-button" type="button" :disabled="openingRecords" @click="openAllRecords">
+          <span v-if="openingRecords" class="wm-loading-spinner"></span>
+          <ListBulletIcon v-else class="wm-icon" />
+          {{ openingRecords ? t('transcription.openingRecords') : t('transcription.viewAllRecords') }}
+        </button>
+      </div>
     </header>
 
     <template v-if="state.status === 'idle' && setupStatus !== 'ready'">
@@ -559,17 +732,6 @@
     </template>
 
     <template v-else-if="state.status === 'idle'">
-      <div
-        class="wm-transcription-quota"
-        :class="{'is-unavailable': startOptions && !startOptions.membership.canStart}"
-      >
-        <SignalIcon class="wm-icon" />
-        <span>{{ quotaText }}</span>
-        <button class="wm-icon-button" type="button" :disabled="loading" @click="loadSetup(false)">
-          <ArrowPathIcon class="wm-icon" />
-        </button>
-      </div>
-
       <section class="wm-panel wm-transcription-setup">
         <label>
           <span class="wm-setting-label">{{ t('transcription.recordTitle') }}</span>
@@ -623,6 +785,30 @@
             </span>
             <RekaSwitch v-model="form.saveAudio" :aria-label="t('transcription.saveAudio')" />
           </div>
+          <div v-if="currentProvider?.supportsSpeakerDiarization" class="wm-toggle-row">
+            <span class="wm-toggle-copy">
+              <strong>{{ t('transcription.speakerDiarization') }}</strong>
+              <small class="wm-muted">
+                {{
+                  startOptions?.membership.canUseSpeakerDiarization
+                    ? t('transcription.speakerDiarizationDesc')
+                    : t('transcription.speakerDiarizationUnavailable')
+                }}
+              </small>
+            </span>
+            <RekaSwitch
+              v-model="form.speakerDiarization"
+              :disabled="!startOptions?.membership.canUseSpeakerDiarization"
+              :aria-label="t('transcription.speakerDiarization')"
+            />
+          </div>
+          <label
+            v-if="currentProvider?.supportsSpeakerDiarization && form.speakerDiarization"
+            class="wm-transcription-speaker-count"
+          >
+            <span class="wm-setting-label">{{ t('transcription.speakerCount') }}</span>
+            <RekaSelect v-model="form.speakerCount" :options="speakerCountOptions" />
+          </label>
           <div class="wm-toggle-row">
             <span class="wm-toggle-copy">
               <strong>{{ t('transcription.liveWriteToNote') }}</strong>
@@ -732,11 +918,22 @@
         <article
           v-for="segment in state.segments"
           :key="segment.id"
-          v-memo="[segment.id, segment.text, segment.beginTimeMs]"
+          v-memo="[
+            segment.id,
+            segment.text,
+            segment.beginTimeMs,
+            segment.speakerId,
+            segment.speakerLabel,
+          ]"
           class="wm-transcription-segment"
         >
           <time>{{ formatDuration(segment.beginTimeMs || 0) }}</time>
-          <p>{{ segment.text }}</p>
+          <div class="wm-transcription-segment-content">
+            <span v-if="segmentSpeakerLabel(segment)" class="wm-transcription-speaker">
+              {{ segmentSpeakerLabel(segment) }}
+            </span>
+            <p>{{ segment.text }}</p>
+          </div>
         </article>
         <article v-if="state.partialText" class="wm-transcription-segment is-partial">
           <time>{{ elapsed }}</time>
@@ -890,6 +1087,19 @@
           }}
         </button>
       </div>
+      <div
+        v-if="completionView === 'transcript' && completedSpeakers.length"
+        class="wm-transcription-speaker-toolbar"
+      >
+        <span>
+          <UserGroupIcon class="wm-icon" />
+          {{ t('transcription.identifiedSpeakers', {count: completedSpeakers.length}) }}
+        </span>
+        <button class="wm-button" type="button" @click="openSpeakerManager">
+          <UserGroupIcon class="wm-icon" />
+          {{ t('transcription.manageSpeakers') }}
+        </button>
+      </div>
       <section
         v-if="completionView === 'transcript'"
         ref="transcriptionStream"
@@ -899,11 +1109,39 @@
         <article
           v-for="segment in state.completedDetail.segments"
           :key="segment.id"
-          v-memo="[segment.id, segment.text, segment.beginTimeMs]"
+          v-memo="[
+            segment.id,
+            segment.text,
+            segment.beginTimeMs,
+            segment.speakerId,
+            segment.speakerLabel,
+          ]"
           class="wm-transcription-segment"
         >
           <time>{{ formatDuration(segment.beginTimeMs || 0) }}</time>
-          <p>{{ segment.text }}</p>
+          <div class="wm-transcription-segment-content">
+            <select
+              v-if="segmentSpeakerLabel(segment) && completedSpeakers.length"
+              class="wm-transcription-speaker-select"
+              :value="segment.speakerId"
+              :aria-label="t('transcription.selectSpeaker')"
+              :disabled="Boolean(assigningSpeakerSegmentId)"
+              @change="
+                assignCompletedSpeaker(
+                  segment,
+                  ($event.target as HTMLSelectElement).value,
+                )
+              "
+            >
+              <option v-for="speaker in completedSpeakers" :key="speaker.id" :value="speaker.id">
+                {{ speaker.name }}
+              </option>
+            </select>
+            <span v-else-if="segmentSpeakerLabel(segment)" class="wm-transcription-speaker">
+              {{ segmentSpeakerLabel(segment) }}
+            </span>
+            <p>{{ segment.text }}</p>
+          </div>
         </article>
       </section>
       <section v-else class="wm-transcription-summary-view">
@@ -1014,5 +1252,120 @@
         </button>
       </footer>
     </template>
+
+    <WmDialog
+      v-model:open="speakerDialogOpen"
+      :title="t('transcription.manageSpeakers')"
+      :description="t('transcription.manageSpeakersDesc')"
+      content-class="wm-transcription-speaker-dialog"
+    >
+      <div class="wm-transcription-speaker-list">
+        <div
+          v-for="speaker in completedSpeakers"
+          :key="speaker.id"
+          class="wm-transcription-speaker-row"
+        >
+          <span class="wm-transcription-speaker-avatar" aria-hidden="true">
+            <UserGroupIcon />
+          </span>
+          <label class="wm-transcription-speaker-field">
+            <span>{{ t('transcription.speakerDisplayName') }}</span>
+            <input
+              v-model.trim="speakerNames[speaker.id]"
+              class="wm-input"
+              type="text"
+              maxlength="40"
+              :placeholder="speaker.name"
+              :disabled="Boolean(speakerMergeTargets[speaker.id]) || speakerSaving"
+            />
+            <small>
+              {{
+                t('transcription.speakerSegmentStats', {
+                  count: speaker.segmentCount,
+                  duration: formatDuration(speaker.durationMs),
+                })
+              }}
+            </small>
+          </label>
+          <label class="wm-transcription-speaker-field is-merge">
+            <span>{{ t('transcription.mergeSpeakerInto') }}</span>
+            <select v-model="speakerMergeTargets[speaker.id]" :disabled="speakerSaving">
+              <option value="">{{ t('transcription.keepSpeakerSeparate') }}</option>
+              <option
+                v-for="target in completedSpeakers.filter(item => item.id !== speaker.id)"
+                :key="target.id"
+                :value="target.id"
+              >
+                {{ speakerNames[target.id] || target.name }}
+              </option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <footer class="wm-dialog-actions wm-actions">
+        <button
+          class="wm-button"
+          type="button"
+          :disabled="speakerSaving"
+          @click="speakerDialogOpen = false"
+        >
+          <XMarkIcon class="wm-icon" />
+          {{ t('common.cancel') }}
+        </button>
+        <button
+          class="wm-button is-primary"
+          type="button"
+          :disabled="speakerSaving"
+          @click="saveSpeakerChanges"
+        >
+          <ArrowPathIcon v-if="speakerSaving" class="wm-icon wm-spin" />
+          <CheckIcon v-else class="wm-icon" />
+          {{ t('transcription.saveSpeakers') }}
+        </button>
+      </footer>
+    </WmDialog>
+
+    <WmDialog
+      v-model:open="historyDialogOpen"
+      :title="t('transcription.historyTitle')"
+      :description="t('transcription.historyDesc')"
+      content-class="wm-transcription-history-dialog"
+    >
+      <div v-if="historyItems.length" class="wm-transcription-history-list">
+        <button
+          v-for="item in historyItems"
+          :key="item.id"
+          class="wm-transcription-history-item"
+          type="button"
+          :disabled="isActive"
+          @click="showHistoryItem(item)"
+        >
+          <span class="wm-transcription-history-icon" aria-hidden="true">
+            <MicrophoneIcon />
+          </span>
+          <span class="wm-transcription-history-content">
+            <span class="wm-transcription-history-heading">
+              <strong>{{ item.title }}</strong>
+              <span class="wm-transcription-history-kind">
+                {{
+                  item.summary
+                    ? t('transcription.summaryView')
+                    : t('transcription.transcriptView')
+                }}
+              </span>
+            </span>
+            <small class="wm-transcription-history-meta">
+              {{ formatRecordDate(item.createdAt) }} · {{ formatDuration(item.durationMs) }} ·
+              {{ t('transcription.historyWordCount', {count: item.wordCount}) }}
+            </small>
+          </span>
+          <ChevronRightIcon class="wm-transcription-history-chevron" aria-hidden="true" />
+        </button>
+      </div>
+      <div v-else class="wm-transcription-history-empty">
+        <ClockIcon class="wm-transcription-result-icon" />
+        <p>{{ t('transcription.historyEmpty') }}</p>
+      </div>
+    </WmDialog>
   </section>
 </template>

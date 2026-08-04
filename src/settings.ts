@@ -37,6 +37,7 @@ export const DEFAULT_SETTINGS: WiseMindImportSettings = {
     saveAudio: false,
     completionAction: 'ask',
   },
+  transcriptionHistory: [],
   assistantSummaryHistory: [],
   assistantCardHistory: [],
   assistantChatSessions: [],
@@ -62,6 +63,9 @@ export const normalizeWiseMindSettings = (
   settings.showContextMenu = raw?.showContextMenu === true;
   settings.syncPlans = Array.isArray(settings.syncPlans) ? settings.syncPlans : [];
   settings.syncHistory = Array.isArray(settings.syncHistory) ? settings.syncHistory : [];
+  settings.transcriptionHistory = Array.isArray(settings.transcriptionHistory)
+    ? settings.transcriptionHistory.filter(item => item?.id).slice(0, 30)
+    : [];
   settings.assistantSummaryHistory = Array.isArray(settings.assistantSummaryHistory)
     ? settings.assistantSummaryHistory
     : [];

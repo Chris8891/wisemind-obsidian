@@ -1,3 +1,6 @@
+import {shell} from 'electron';
+import {Platform} from 'obsidian';
+
 import {openWiseMindConnectionDialog} from './services/connectionDialog';
 import {translate} from './i18n';
 import type {
@@ -5,6 +8,7 @@ import type {
   TranscriptionMembershipQuota,
   TranscriptionOrganizeResult,
   TranscriptionRecord,
+  TranscriptionSegmentUpdate,
   TranscriptionStartOptions,
   WiseMindFolder,
   WiseMindLanguageSetting,
@@ -94,7 +98,52 @@ export class WiseMindApiClient {
   }
 
   async openSource(payload: Record<string, unknown>) {
-    return this.postData('/api/v2/open-source', payload);
+    try {
+      return await this.postData('/api/v2/open-source', payload, {
+        timeoutMs: 1200,
+        showConnectionDialog: false,
+      });
+    } catch (requestError) {
+      if (Platform.isMacOS) {
+        try {
+          const openError = await shell.openPath('/Applications/WiseMindAI.app');
+          if (openError) throw new Error(openError);
+          const openedFromApp = await this.waitForOpenSource(payload, 16);
+          if (openedFromApp) return openedFromApp;
+        } catch {
+          // Fall through to the registered protocol for non-standard installations.
+        }
+      }
+
+      let deepLinkOpened = false;
+      try {
+        await shell.openExternal(buildWiseMindDeepLink(payload));
+        deepLinkOpened = true;
+      } catch {
+        // macOS can still launch the installed app directly below.
+      }
+      const reopened = await this.waitForOpenSource(payload, 5);
+      if (reopened) return reopened;
+      if (deepLinkOpened) {
+        return {ok: true, launched: true};
+      }
+      throw requestError;
+    }
+  }
+
+  private async waitForOpenSource(payload: Record<string, unknown>, attempts: number) {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      await new Promise(resolve => globalThis.setTimeout(resolve, 500));
+      try {
+        return await this.postData('/api/v2/open-source', payload, {
+          timeoutMs: 800,
+          showConnectionDialog: false,
+        });
+      } catch {
+        // The desktop client is still starting. Retry within the short bounded window.
+      }
+    }
+    return null;
   }
 
   async getAssistantActions() {
@@ -343,6 +392,13 @@ export class WiseMindApiClient {
     });
   }
 
+  async updateTranscriptionSegments(recordId: string, updates: TranscriptionSegmentUpdate[]) {
+    return this.postData<TranscriptionDetail>(
+      `/api/v2/transcriptions/${encodeURIComponent(recordId)}/segments`,
+      {updates},
+    );
+  }
+
   async openTranscriptions(recordId?: string) {
     return this.openSource({type: 'transcription', ...(recordId ? {id: recordId} : {})});
   }
@@ -386,12 +442,17 @@ export class WiseMindApiClient {
   private async postData<T = any>(
     path: string,
     body: Record<string, unknown>,
-    options: {timeoutMs?: number; signal?: AbortSignal} = {},
+    options: {timeoutMs?: number; signal?: AbortSignal; showConnectionDialog?: boolean} = {},
   ): Promise<T> {
     const response = await this.request(
       path,
       {method: 'POST', body: JSON.stringify(body)},
-      {timeoutMs: options.timeoutMs, requestBody: body, signal: options.signal},
+      {
+        timeoutMs: options.timeoutMs,
+        requestBody: body,
+        signal: options.signal,
+        showConnectionDialog: options.showConnectionDialog,
+      },
     );
     return (response?.data ?? response) as T;
   }
@@ -615,6 +676,15 @@ export class WiseMindApiClient {
     }
   }
 }
+
+export const buildWiseMindDeepLink = (payload: Record<string, unknown>) => {
+  const url = new URL('wisemindai://open');
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    url.searchParams.set(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+  });
+  return url.toString();
+};
 
 export const normalizeBaseUrl = (value: string) => {
   const trimmed = (value || 'http://127.0.0.1:38221').trim();

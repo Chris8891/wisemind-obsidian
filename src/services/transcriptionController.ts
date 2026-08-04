@@ -6,11 +6,13 @@ import type WiseMindObsidianPlugin from '../main';
 import type {
   TranscriptionConnectionStatus,
   TranscriptionDetail,
+  TranscriptionHistoryItem,
   TranscriptionMarkKind,
   TranscriptionRecord,
   TranscriptionRuntimeEvent,
   TranscriptionScene,
   TranscriptionSegment,
+  TranscriptionSegmentUpdate,
 } from '../types';
 
 import {
@@ -21,6 +23,10 @@ import {
 } from './audioCapture';
 import {normalizeConfirmedTranscriptionSegments} from './transcriptionLiveNoteContent';
 import {TranscriptionLiveNoteWriter} from './transcriptionLiveNoteWriter';
+import {
+  transcriptionHistoryToDetail,
+  upsertTranscriptionHistory,
+} from './transcriptionHistory';
 import {parseTranscriptionOrganizationMarkdown} from './transcriptionOrganization';
 import {appendTranscriptionToNote, saveTranscriptionAsNewNote} from './transcriptionResult';
 import {WiseMindTranscriptionSocket} from './transcriptionSocket';
@@ -56,6 +62,8 @@ type StartOptions = {
   providerId?: string;
   deviceId?: string;
   saveAudio: boolean;
+  speakerDiarization?: boolean;
+  speakerCount?: number;
   targetPath?: string;
   liveWriteToNote?: boolean;
 };
@@ -122,11 +130,15 @@ export class TranscriptionController {
           if (this.isActive) this.mutableState.error = error.message;
         },
       });
+      const workspaceState = await this.plugin.api.getWorkspaceState().catch(() => null);
       const record = await this.socket.start({
         title: options.title,
         scenario: options.scenario,
         providerId: options.providerId,
+        workspaceId: workspaceState?.activeWorkspaceId || null,
         saveAudio: options.saveAudio,
+        speakerDiarization: options.speakerDiarization,
+        speakerCount: options.speakerCount,
       });
       this.mutableState.record = record;
       this.capture = await startAudioCapture({
@@ -262,8 +274,41 @@ export class TranscriptionController {
     }
     this.mutableState.completedDetail = {...detail, record: organized.record};
     this.mutableState.record = organized.record;
+    await this.persistHistory(this.mutableState.completedDetail);
     this.notifyStatus();
     return organized;
+  }
+
+  async updateCompletedSpeakers(updates: TranscriptionSegmentUpdate[]) {
+    const detail = this.mutableState.completedDetail;
+    if (!detail) throw new Error(this.t('transcription.errors.noResult'));
+    if (!updates.length) return detail;
+    const updated = await this.plugin.api.updateTranscriptionSegments(detail.record.id, updates);
+    const completedDetail = {
+      ...updated,
+      segments: normalizeConfirmedTranscriptionSegments(updated.segments),
+    };
+    this.mutableState.completedDetail = completedDetail;
+    this.mutableState.record = completedDetail.record;
+    this.mutableState.segments = completedDetail.segments;
+    this.segmentIds = new Set(completedDetail.segments.map(segment => segment.id));
+    await this.persistHistory(completedDetail);
+    this.notifyStatus();
+    return completedDetail;
+  }
+
+  showCachedHistory(item: TranscriptionHistoryItem) {
+    if (this.isActive) return false;
+    const detail = transcriptionHistoryToDetail(item);
+    this.resetState('completed');
+    this.mutableState.record = detail.record;
+    this.mutableState.completedDetail = detail;
+    this.mutableState.segments = detail.segments;
+    this.mutableState.elapsedMs = detail.record.durationMs;
+    this.baseElapsedMs = detail.record.durationMs;
+    this.segmentIds = new Set(detail.segments.map(segment => segment.id));
+    this.notifyStatus();
+    return true;
   }
 
   async retryCompletion() {
@@ -425,11 +470,20 @@ export class TranscriptionController {
       this.mutableState.status = 'completed';
       this.mutableState.connectionStatus = 'disconnected';
       this.notifyStatus();
+      await this.persistHistory(completedDetail);
       await this.handleCompletionAction();
     } catch (error) {
       this.mutableState.error = error instanceof Error ? error.message : this.t('transcription.errors.loadResult');
       this.notifyStatus();
     }
+  }
+
+  private async persistHistory(detail: TranscriptionDetail) {
+    this.plugin.settings.transcriptionHistory = upsertTranscriptionHistory(
+      this.plugin.settings.transcriptionHistory || [],
+      detail,
+    );
+    await this.plugin.saveSettings();
   }
 
   private async handleCompletionAction() {

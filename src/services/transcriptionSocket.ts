@@ -14,6 +14,8 @@ type StartPayload = {
   saveAudio?: boolean;
   workspaceId?: string | null;
   providerId?: string;
+  speakerDiarization?: boolean;
+  speakerCount?: number;
 };
 
 type PendingRequest = {
