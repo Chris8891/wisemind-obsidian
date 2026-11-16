@@ -1,0 +1,1383 @@
+// P-page styles for sync. Built on tokens and classes in ../v2.scss.
+
+.wm2-sync {
+  --checkbox-color: var(--wm2-brand);
+  --checkbox-color-hover: var(--wm2-brand);
+
+  container-type: inline-size;
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  // Horizontal margins cancel .wm2-main padding so the footer spans the pane.
+  // Keep the bottom padding: Obsidian's status bar floats over the leaf and would cover the footer.
+  margin: 0 -16px 0;
+  padding-bottom: 16px;
+
+  input[type='checkbox'],
+  input[type='radio'] {
+    flex: none;
+    margin: 0;
+    accent-color: var(--wm2-brand);
+    cursor: pointer;
+
+    &:disabled {
+      cursor: not-allowed;
+    }
+  }
+
+  // Obsidian draws its own checkbox, which has no partially-selected look for folders.
+  input[type='checkbox']:indeterminate {
+    position: relative;
+    border-color: var(--checkbox-color);
+    background-color: var(--checkbox-color);
+
+    &::after {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 8px;
+      height: 2px;
+      border-radius: 1px;
+      background: var(--checkbox-marker-color, var(--text-on-accent));
+      transform: translate(-50%, -50%);
+      content: '';
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
+  }
+
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--wm2-brand) 55%, transparent);
+    outline-offset: 1px;
+  }
+}
+
+// Wizard panes are fieldsets so a running sync disables every control inside at once.
+fieldset.wm2-sync-pane {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+
+  &:disabled {
+    pointer-events: none;
+
+    > :not(.wm2-sync-running) {
+      opacity: 0.6;
+      transition: opacity 0.2s ease;
+    }
+  }
+}
+
+.wm2-sync-faint {
+  color: var(--wm2-faint);
+}
+
+// Shimmer placeholder used while the vault and WiseMindAI data load for the first time.
+@keyframes wm2-sync-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.wm2-sync-skeleton {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(
+      90deg,
+      var(--wm2-soft) 25%,
+      color-mix(in srgb, var(--wm2-soft) 40%, transparent) 50%,
+      var(--wm2-soft) 75%
+    )
+    0 0 / 200% 100%;
+  animation: wm2-sync-shimmer 1.4s ease-in-out infinite;
+
+  &.is-value {
+    width: 44px;
+    height: 20px;
+    margin: 3px 0 3px;
+  }
+
+  &.is-box {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+  }
+
+  &.is-line {
+    flex: 1;
+    max-width: 70%;
+    height: 10px;
+  }
+}
+
+.wm2-sync-skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wm2-sync-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  padding: 3px 8px;
+
+  &:nth-child(2n) .wm2-sync-skeleton.is-line {
+    max-width: 48%;
+  }
+
+  &:nth-child(3n) .wm2-sync-skeleton.is-line {
+    max-width: 60%;
+  }
+}
+
+.wm2-sync-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow: hidden auto;
+  // Extra bottom room so the last tree row never sits flush against the fixed footer.
+  padding: 0 16px 24px;
+  scroll-padding-bottom: 24px;
+}
+
+// ---------- Overview ----------
+.wm2-sync-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wm2-sync-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+
+  > strong {
+    font-size: 20px;
+    font-weight: var(--font-bold);
+    line-height: 1.3;
+  }
+
+  // The card on the source side of the chosen direction gets a soft brand ring.
+  &.is-current {
+    box-shadow: var(--wm2-card-shadow), 0 0 0 1px color-mix(in srgb, var(--wm2-brand) 35%, transparent);
+  }
+
+  &.is-alert {
+    box-shadow: var(--wm2-card-shadow), 0 0 0 1px var(--wm2-error-soft);
+  }
+}
+
+.wisemindai-obsidian-root button.wm2-sync-stat.is-clickable {
+  align-items: stretch;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--wm2-card-border);
+  border-radius: var(--wm2-radius-card);
+  padding: 10px 12px;
+  background: var(--wm2-surface);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--wm2-surface) 85%, var(--text-normal) 4%);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+.wm2-sync-stat-label {
+  color: var(--wm2-muted);
+  font-size: 11px;
+}
+
+.wm2-sync-stat-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--wm2-faint);
+  font-size: 11px;
+
+  &.is-brand {
+    color: var(--wm2-brand-text);
+  }
+
+  &.is-info {
+    color: var(--wm2-info);
+  }
+
+  &.is-success {
+    color: var(--wm2-success);
+  }
+
+  &.is-error {
+    color: var(--wm2-error);
+  }
+}
+
+.wm2-sync-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.wm2-sync-scope {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  border-radius: var(--wm2-radius-row);
+  padding: 8px 12px;
+  background: var(--wm2-brand-soft);
+  font-size: 12px;
+
+  > .wm-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    color: var(--wm2-brand-text);
+  }
+
+  > span {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  strong {
+    font-weight: var(--font-medium);
+  }
+
+  small {
+    color: var(--wm2-muted);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+}
+
+.wm2-sync-running {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wm2-sync-running-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.wm2-sync-running-count {
+  flex: none;
+  color: var(--wm2-muted);
+  font-size: 11px;
+}
+
+@keyframes wm2-sync-indeterminate {
+  0% {
+    background-position: 150% 0;
+  }
+
+  100% {
+    background-position: -50% 0;
+  }
+}
+
+progress.wm2-sync-progress {
+  display: block;
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--wm2-soft);
+  appearance: none;
+
+  &::-webkit-progress-bar {
+    border-radius: 999px;
+    background: var(--wm2-soft);
+  }
+
+  &::-webkit-progress-value {
+    border-radius: 999px;
+    background: var(--wm2-brand-gradient);
+    transition: width 0.3s ease;
+  }
+
+  // Before the runner reports a total there is nothing to measure yet; show a moving sheen instead.
+  &.is-indeterminate::-webkit-progress-bar {
+    background: linear-gradient(
+        90deg,
+        var(--wm2-soft) 0%,
+        color-mix(in srgb, var(--wm2-brand) 45%, transparent) 50%,
+        var(--wm2-soft) 100%
+      )
+      0 0 / 50% 100% no-repeat,
+      var(--wm2-soft);
+    animation: wm2-sync-indeterminate 1.2s linear infinite;
+  }
+}
+
+.wm2-sync-section-actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.wisemindai-obsidian-root button.wm2-sync-retry {
+  color: var(--wm2-error);
+
+  &:hover {
+    background: var(--wm2-error-soft);
+    color: var(--wm2-error);
+  }
+}
+
+.wm2-sync-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wm2-sync-route {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: var(--wm2-muted);
+  font-size: 12px;
+
+  .wm-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: var(--wm2-brand);
+  }
+
+  &.is-strong {
+    color: var(--text-normal);
+    font-size: 13px;
+    font-weight: var(--font-medium);
+  }
+}
+
+.wm2-sync-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.wm2-sync-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  border-radius: 10px;
+  padding: 6px 2px;
+  background: color-mix(in srgb, var(--wm2-surface) 80%, transparent);
+  text-align: center;
+
+  strong {
+    font-size: 15px;
+    font-weight: var(--font-bold);
+    line-height: 1.3;
+  }
+
+  small {
+    overflow: hidden;
+    max-width: 100%;
+    color: var(--wm2-muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &.is-boxed {
+    background: var(--wm2-soft);
+  }
+
+  &.is-success strong {
+    color: var(--wm2-success);
+  }
+
+  &.is-info strong {
+    color: var(--wm2-info);
+  }
+
+  &.is-error strong {
+    color: var(--wm2-error);
+  }
+
+  &.is-brand strong {
+    color: var(--wm2-brand-text);
+  }
+
+  // Zero counts fade back so the non-empty outcomes stand out at a glance.
+  &.is-zero strong {
+    color: var(--wm2-faint);
+    font-weight: var(--font-medium);
+  }
+}
+
+.wm2-sync-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    border-radius: 8px;
+    padding: 4px 6px;
+    font-size: 12px;
+
+    &:hover {
+      background: var(--wm2-soft);
+    }
+  }
+
+  .wm-icon {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    color: var(--wm2-faint);
+  }
+
+  small {
+    color: var(--wm2-muted);
+    font-size: 11px;
+  }
+}
+
+.wm2-sync-plans .wm2-list-row {
+  border-radius: 0;
+  padding: 10px 12px;
+  transition: background-color 0.15s ease;
+
+  &:hover,
+  &:focus-within {
+    background: var(--wm2-soft);
+  }
+
+  &.is-default {
+    background: color-mix(in srgb, var(--wm2-brand-soft) 55%, transparent);
+    box-shadow: inset 2px 0 0 var(--wm2-brand);
+
+    &:hover,
+    &:focus-within {
+      background: var(--wm2-brand-soft);
+    }
+  }
+}
+
+.wm2-sync-plan-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+
+  strong {
+    font-weight: var(--font-semibold);
+  }
+}
+
+// ---------- Wizard ----------
+.wm2-sync-steps {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    position: relative;
+    display: flex;
+    flex: 1;
+    justify-content: center;
+    min-width: 0;
+
+    & + li::before {
+      position: absolute;
+      top: 10px;
+      right: calc(50% + 16px);
+      left: calc(-50% + 16px);
+      height: 2px;
+      border-radius: 999px;
+      background: var(--wm2-line);
+      content: '';
+      transition: background-color 0.25s ease;
+    }
+
+    &.is-active::before,
+    &.is-done::before {
+      background: var(--wm2-brand-gradient);
+    }
+  }
+
+  li.is-active .wm2-sync-step-dot {
+    background: var(--wm2-brand-gradient);
+    color: #fff;
+    box-shadow: var(--wm2-brand-shadow);
+    transform: scale(1.08);
+  }
+
+  li.is-done .wm2-sync-step-dot {
+    background: var(--wm2-brand-soft);
+    color: var(--wm2-brand-text);
+  }
+
+  li.is-active .wm2-sync-step {
+    color: var(--text-normal);
+    font-weight: var(--font-semibold);
+  }
+
+  li.is-done .wm2-sync-step {
+    color: var(--text-normal);
+  }
+
+  li:not(.is-active, .is-done) .wm2-sync-step {
+    color: var(--wm2-faint);
+  }
+}
+
+.wisemindai-obsidian-root button.wm2-sync-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 8px;
+  padding: 0 4px 2px;
+  color: var(--wm2-muted);
+  font-size: 11px;
+
+  &:disabled {
+    opacity: 1;
+    cursor: default;
+  }
+
+  // Completed steps are links back; make that discoverable on hover.
+  &:not(:disabled):hover {
+    .wm2-sync-step-dot {
+      background: var(--wm2-brand);
+      color: #fff;
+    }
+
+    .wm2-sync-step-label {
+      color: var(--wm2-brand-text);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+  }
+}
+
+.wm2-sync-step-dot {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--wm2-soft);
+  color: var(--wm2-muted);
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+
+  .wm-icon {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+.wm2-sync-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wm2-sync-pane-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  strong {
+    font-size: 13px;
+    font-weight: var(--font-semibold);
+  }
+
+  small {
+    font-size: 11px;
+  }
+}
+
+// Hug the labels. Equal-width flex made short options stretch across the sync pane.
+.wm2-segmented.wm2-sync-segmented {
+  align-self: flex-start;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+
+  button {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    white-space: nowrap;
+    transition: color 0.15s ease;
+
+    .wm-icon {
+      flex: none;
+      width: 14px;
+      height: 14px;
+    }
+
+    &.is-active {
+      color: var(--text-normal);
+      font-weight: var(--font-medium);
+
+      .wm-icon {
+        color: var(--wm2-brand-text);
+      }
+    }
+
+    &:not(.is-active):hover {
+      background: color-mix(in srgb, var(--wm2-surface) 45%, transparent);
+    }
+
+    &:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.wm2-sync-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  border: 1px solid var(--wm2-card-border);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: var(--wm2-surface);
+  box-shadow: var(--wm2-btn-shadow);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+
+  > .wm-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: var(--wm2-faint);
+  }
+
+  input[type='text'] {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    font-size: 12px;
+    box-shadow: none;
+
+    &:focus,
+    &:focus-visible {
+      border: 0;
+      outline: none;
+      box-shadow: none;
+    }
+  }
+
+  &:focus-within {
+    border-color: color-mix(in srgb, var(--wm2-brand) 40%, var(--wm2-card-border));
+    box-shadow: var(--wm2-btn-shadow), 0 0 0 2px var(--wm2-brand-soft);
+
+    > .wm-icon {
+      color: var(--wm2-brand-text);
+    }
+  }
+}
+
+.wisemindai-obsidian-root button.wm2-sync-search-clear {
+  margin-right: -6px;
+  border-radius: 50%;
+  color: var(--wm2-faint);
+
+  &:hover {
+    color: var(--text-normal);
+  }
+}
+
+.wm2-sync-hit {
+  border-radius: 3px;
+  padding: 0 1px;
+  background: color-mix(in srgb, var(--wm2-warning) 28%, transparent);
+  color: inherit;
+}
+
+.wm2-sync input.wm2-sync-input,
+.wm2-sync-dialog input.wm2-sync-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.wm2-sync-create {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wm2-sync-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 22px;
+}
+
+.wm2-sync-toolbar-count {
+  flex: 1;
+  color: var(--wm2-muted);
+  font-size: 12px;
+  transition: color 0.15s ease;
+
+  &.is-active {
+    color: var(--wm2-brand-text);
+    font-weight: var(--font-medium);
+  }
+}
+
+.wm2-sync-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px;
+}
+
+.wm2-sync-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.wm2-sync-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 30px;
+  border-radius: 8px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.12s ease;
+
+  &:hover {
+    background: var(--wm2-soft);
+  }
+
+  &:active {
+    background: color-mix(in srgb, var(--wm2-soft) 70%, var(--text-normal) 6%);
+  }
+
+  &.is-checked {
+    background: color-mix(in srgb, var(--wm2-brand-soft) 60%, transparent);
+
+    &:hover {
+      background: var(--wm2-brand-soft);
+    }
+  }
+
+  // Keyboard users tab onto the checkbox inside a row label; ring the whole row instead.
+  &:has(> input:focus-visible) {
+    outline: 2px solid color-mix(in srgb, var(--wm2-brand) 55%, transparent);
+    outline-offset: -2px;
+
+    > input {
+      outline: none;
+    }
+  }
+
+  &.is-group {
+    padding-left: 2px;
+
+    &.is-checked {
+      background: transparent;
+
+      &:hover {
+        background: var(--wm2-soft);
+      }
+    }
+  }
+
+  .wm2-list-main {
+    gap: 0;
+    font-size: 12px;
+
+    small {
+      font-size: 10px;
+    }
+  }
+}
+
+.wisemindai-obsidian-root button.wm2-sync-chevron .wm-icon {
+  transition: transform 0.18s ease;
+}
+
+.wm2-sync-group.is-open > .wm2-sync-row .wm2-sync-chevron .wm-icon {
+  transform: rotate(90deg);
+}
+
+.wm2-sync-row-title {
+  flex: 1;
+  font-weight: var(--font-medium);
+}
+
+.wm2-sync-count-chip {
+  flex: none;
+  min-width: 22px;
+  border-radius: 999px;
+  padding: 1px 6px;
+  color: var(--wm2-faint);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  transition: background-color 0.15s ease, color 0.15s ease;
+
+  &.is-active {
+    background: var(--wm2-brand-soft);
+    color: var(--wm2-brand-text);
+    font-weight: var(--font-medium);
+  }
+}
+
+@keyframes wm2-sync-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.wisemindai-obsidian-root button.wm2-sync-more {
+  align-self: flex-start;
+  margin: 2px 0 2px 8px;
+  color: var(--wm2-brand-text);
+}
+
+.wm2-sync-no-match {
+  gap: 8px;
+
+  .wm2-empty-icon {
+    color: var(--wm2-faint);
+  }
+
+  p {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+}
+
+.wm2-sync-folder-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--wm2-warning);
+}
+
+.wm2-sync-doc-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--wm2-faint);
+}
+
+.wm2-sync-count {
+  flex: none;
+  color: var(--wm2-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wm2-sync-children {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: 13px;
+  border-left: 1px solid var(--wm2-line);
+  padding-left: 8px;
+  animation: wm2-sync-reveal 0.18s ease-out;
+}
+
+.wm2-sync-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.wm2-sync-policy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: 16px;
+  padding: 12px;
+  background: var(--wm2-soft);
+
+  label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 -6px;
+    border-radius: 8px;
+    padding: 3px 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+
+    &:hover {
+      background: color-mix(in srgb, var(--wm2-surface) 60%, transparent);
+    }
+
+    &:has(input:checked) {
+      font-weight: var(--font-medium);
+    }
+  }
+}
+
+.wm2-sync-policy-title {
+  color: var(--wm2-muted);
+  font-size: 11px;
+  font-weight: var(--font-medium);
+}
+
+.wm2-sync-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.wisemindai-obsidian-root button.wm2-sync-save-plan {
+  align-self: flex-start;
+}
+
+.wm2-sync-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-radius: var(--wm2-radius-row);
+  padding: 8px 12px;
+  background: var(--wm2-warning-soft);
+  color: color-mix(in srgb, var(--wm2-warning) 45%, var(--text-normal));
+  font-size: 12px;
+  line-height: 1.5;
+
+  > .wm-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    color: var(--wm2-warning);
+  }
+
+  &.is-error {
+    align-items: center;
+    background: var(--wm2-error-soft);
+    color: color-mix(in srgb, var(--wm2-error) 55%, var(--text-normal));
+
+    > .wm-icon {
+      margin-top: 0;
+      color: var(--wm2-error);
+    }
+  }
+}
+
+.wm2-sync-alert-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+// Chips carry user folder and target names; keep long ones inside narrow cards and dialogs.
+.wm2-sync-confirm .wm2-chip,
+.wm2-sync-kv-values .wm2-chip {
+  display: inline-block;
+  flex: 0 1 auto;
+  max-width: 100%;
+  overflow: hidden;
+  line-height: 20px;
+  text-overflow: ellipsis;
+}
+
+// ---------- Fixed action bar ----------
+.wm2-sync-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 56px;
+  border-top: 1px solid var(--wm2-line);
+  padding: 0 16px;
+  background: var(--wm2-glass);
+}
+
+.wm2-sync-footer-info {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+
+  .wm-icon {
+    width: 12px;
+    height: 12px;
+    margin-right: 2px;
+    vertical-align: -2px;
+  }
+
+  &.is-warning {
+    color: color-mix(in srgb, var(--wm2-warning) 70%, var(--text-normal));
+  }
+}
+
+// Three labelled buttons do not fit a narrow sidebar, so history collapses to an icon button.
+@container (max-width: 360px) {
+  .wisemindai-obsidian-root button.wm2-sync-history-btn {
+    width: 28px;
+    padding: 0;
+  }
+
+  .wm2-sync-footer-label {
+    display: none;
+  }
+
+  // The overview footer already carries two labelled buttons; the live summary would be a sliver.
+  .wm2-sync-footer.is-overview .wm2-sync-footer-info {
+    visibility: hidden;
+  }
+
+  .wm2-sync-stat,
+  .wisemindai-obsidian-root button.wm2-sync-stat.is-clickable {
+    padding: 8px 10px;
+  }
+
+  .wm2-sync-steps .wm2-sync-step {
+    font-size: 10px;
+  }
+}
+
+@container (max-width: 280px) {
+  .wm2-sync-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wm2-sync-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+// ---------- Dialogs ----------
+.wm2-sync-dialog {
+  --checkbox-color: var(--wm2-brand);
+
+  border-radius: var(--wm2-radius-card);
+  box-shadow: var(--wm2-float-shadow);
+
+  .wm2-sync-tiles {
+    margin-bottom: 12px;
+  }
+}
+
+.wm2-sync-result-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 50vh;
+  overflow: auto;
+}
+
+.wm2-sync-detail-card li {
+  padding: 8px 12px;
+  transition: background-color 0.12s ease;
+
+  &:hover {
+    background: var(--wm2-soft);
+  }
+}
+
+.wm2-sync-detail-card.is-status-failed li {
+  box-shadow: inset 2px 0 0 var(--wm2-error);
+}
+
+.wm2-sync-dialog .wm2-chip {
+  &.is-status-created {
+    background: var(--wm2-success-soft);
+    color: var(--wm2-success);
+  }
+
+  &.is-status-updated {
+    background: var(--wm2-info-soft);
+    color: var(--wm2-info);
+  }
+
+  &.is-status-failed {
+    background: var(--wm2-error-soft);
+    color: var(--wm2-error);
+  }
+}
+
+.wm2-sync-detail-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+
+  strong {
+    font-weight: var(--font-medium);
+  }
+
+  .wm-icon {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    color: var(--wm2-faint);
+  }
+}
+
+.wm2-sync-kv {
+  margin-bottom: 12px;
+
+  li {
+    justify-content: space-between;
+    min-width: 0;
+
+    > span:first-child {
+      flex: none;
+    }
+  }
+}
+
+.wm2-sync-kv-values {
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.wm2-sync-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wisemindai-obsidian-root button.wm2-sync-danger,
+.wm2-sync-dialog button.wm2-btn.wm2-sync-danger {
+  background: var(--wm2-error-soft);
+  color: var(--wm2-error);
+  box-shadow: none;
+
+  &:hover {
+    background: var(--wm2-error-soft);
+    filter: brightness(0.97);
+  }
+}
+
+// Keep spinners as status feedback, but drop decorative motion for users who ask for less.
+@media (prefers-reduced-motion: reduce) {
+  .wm2-sync,
+  .wm2-sync-dialog {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+    }
+
+    .wm2-sync-children,
+    .wm2-sync-skeleton,
+    .wm2-sync-progress.is-indeterminate::-webkit-progress-bar {
+      animation: none !important;
+    }
+  }
+}
+
+// ---------- Sync rules (one-way Obsidian -> WiseMindAI) ----------
+.wm2-sync-stats.is-four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.wm2-sync-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  > .wm2-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .wm2-list-row.is-clickable {
+    cursor: pointer;
+  }
+
+  .wm2-list-row.is-muted .wm2-list-main {
+    opacity: 0.55;
+  }
+
+  .wm2-empty.is-compact {
+    align-items: center;
+    gap: 6px;
+    padding: 18px 14px;
+    text-align: center;
+
+    p {
+      margin: 0;
+      font-size: 12px;
+    }
+  }
+}
+
+.wm2-sync-rules-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wm2-sync-rules-held {
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wm2-sync-rules-last {
+  display: block;
+  font-size: var(--font-ui-smaller);
+}
+
+.wm2-sync-rules-subtitle {
+  align-items: center;
+  justify-content: space-between;
+  margin: 4px 0 0;
+  color: var(--wm2-muted);
+  font-size: 12px;
+  font-weight: var(--font-semibold);
+}
+
+.wm2-sync-send-title {
+  margin-top: 8px;
+}
+
+.wm2-sync-rule-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.wm2-sync-field.is-inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.wm2-sync-rule-target,
+.wm2-sync-rule-topics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+
+  > .wm-icon {
+    width: 14px;
+    height: 14px;
+    color: var(--wm2-faint);
+  }
+}
+
+.wm2-sync-rule-topics {
+  max-height: 120px;
+  overflow: auto;
+}
+
+.wm2-sync-rule-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.wm2-sync-conflict-dialog {
+  width: min(720px, 94vw);
+}
+
+.wm2-sync-conflict-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 11px;
+}
+
+.wm2-sync-conflict-diff {
+  max-height: 48vh;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.wm2-sync-conflict-note {
+  margin: 10px 0 14px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+@media (width <= 420px) {
+  .wm2-sync-stats.is-four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

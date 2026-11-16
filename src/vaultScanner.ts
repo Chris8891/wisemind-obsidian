@@ -1,5 +1,7 @@
-import type { App, TFile } from 'obsidian';
+import {type App, TFile} from 'obsidian';
 
+import { collectNoteTags } from './services/relatedNotes';
+import { isPathIgnored } from './sync/syncRules';
 import { convertObsidianImagesToWiseMindMarkdown } from './markdownImages';
 import { stripSourceMarkers } from './markers';
 import { hashText, markdownToPlainText, normalizeTags } from './text';
@@ -16,14 +18,86 @@ type FrontmatterResult = {
   body: string;
 };
 
+/** Full-content scan. Prefer {@link listVaultMetadata} for Sync / picker lists. */
 export const scanVault = async (app: App, options: ScanVaultOptions): Promise<ObsidianSourceItem[]> => {
-  const maxBytes = options.maxFileSizeKb * 1024;
-  const files = app.vault
-    .getMarkdownFiles()
-    .filter(file => shouldIncludeFile(file, maxBytes, options));
-
-  const items = await Promise.all(files.map(file => readObsidianFile(app, file)));
+  const files = listVaultFiles(app, options);
+  const items: ObsidianSourceItem[] = [];
+  // Bound concurrency so large vaults do not open every file at once.
+  const concurrency = 3;
+  for (let index = 0; index < files.length; index += concurrency) {
+    const chunk = files.slice(index, index + concurrency);
+    items.push(...(await Promise.all(chunk.map(file => readObsidianFile(app, file)))));
+  }
   return items.sort((a, b) => a.path.localeCompare(b.path));
+};
+
+/**
+ * Lightweight vault listing for Sync Tab / note pickers: path, title (basename), mtime, size.
+ * Does not read file bodies — call {@link hydrateObsidianItems} before upload / AI.
+ */
+export const listVaultMetadata = (app: App, options: ScanVaultOptions): ObsidianSourceItem[] => {
+  return listVaultFiles(app, options)
+    .map(file => {
+      const folderPath = file.path.includes('/') ? file.path.split('/').slice(0, -1).join('/') : '';
+      const cache = app.metadataCache.getFileCache(file);
+      const frontmatter = (cache?.frontmatter || {}) as Record<string, unknown>;
+      const frontmatterTitle =
+        typeof frontmatter.title === 'string' ? frontmatter.title.trim() : '';
+      return {
+        path: file.path,
+        absolutePath: resolveAbsolutePath(app, file.path),
+        basename: file.basename,
+        folderPath,
+        title: frontmatterTitle || file.basename,
+        markdown: '',
+        plainText: '',
+        tags: collectNoteTags(cache),
+        frontmatter,
+        modifiedAt: file.stat.mtime,
+        size: file.stat.size,
+        contentHash: '',
+      } satisfies ObsidianSourceItem;
+    })
+    .sort((a, b) => a.path.localeCompare(b.path));
+};
+
+/** Reads bodies for the given items (skips ones that already have markdown). */
+export const hydrateObsidianItems = async (
+  app: App,
+  items: ObsidianSourceItem[],
+  concurrency = 3,
+): Promise<ObsidianSourceItem[]> => {
+  const result: ObsidianSourceItem[] = new Array(items.length);
+  let cursor = 0;
+  const workerCount = Math.min(concurrency, Math.max(items.length, 1));
+  await Promise.all(
+    Array.from({length: workerCount}, async () => {
+      while (cursor < items.length) {
+        const index = cursor++;
+        const item = items[index];
+        if (item.markdown) {
+          result[index] = item;
+          continue;
+        }
+        const file = app.vault.getAbstractFileByPath(item.path);
+        if (!(file instanceof TFile)) {
+          result[index] = item;
+          continue;
+        }
+        try {
+          result[index] = await readObsidianFile(app, file);
+        } catch {
+          result[index] = item;
+        }
+      }
+    }),
+  );
+  return result;
+};
+
+const listVaultFiles = (app: App, options: ScanVaultOptions) => {
+  const maxBytes = options.maxFileSizeKb * 1024;
+  return app.vault.getMarkdownFiles().filter(file => shouldIncludeFile(file, maxBytes, options));
 };
 
 export const readObsidianFile = async (app: App, file: TFile): Promise<ObsidianSourceItem> => {
@@ -51,7 +125,7 @@ export const readObsidianFile = async (app: App, file: TFile): Promise<ObsidianS
   };
 };
 
-const resolveAbsolutePath = (app: App, path: string) => {
+export const resolveAbsolutePath = (app: App, path: string) => {
   const adapter = (app.vault as any).adapter;
   const basePath = typeof adapter.getBasePath === 'function' ? adapter.getBasePath() : '';
   return basePath ? `${String(basePath).replace(/\/+$/, '')}/${path}` : path;
@@ -119,12 +193,7 @@ const shouldIncludeFile = (file: TFile, maxBytes: number, options: ScanVaultOpti
   if (file.stat.size > maxBytes) return false;
   if (options.folderPrefix && !file.path.startsWith(options.folderPrefix)) return false;
   if (file.path.split('/').some(part => part.startsWith('.') && part !== '.')) return false;
-  return !options.ignorePatterns.some(pattern => matchSimplePattern(file.path, pattern));
+  return !isPathIgnored(file.path, options.ignorePatterns);
 };
 
-const matchSimplePattern = (path: string, pattern: string) => {
-  if (!pattern) return false;
-  if (pattern.endsWith('/**')) return path.startsWith(pattern.slice(0, -3));
-  if (pattern.startsWith('**/')) return path.includes(pattern.slice(3).replace('/**', ''));
-  return path === pattern || path.startsWith(`${pattern}/`);
-};
+export { isPathIgnored };

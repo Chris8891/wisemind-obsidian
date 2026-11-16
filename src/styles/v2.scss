@@ -1,0 +1,2704 @@
+// v2 visual layer ("soft glass"). Two token layers:
+// - surface tokens map to Obsidian variables, so community themes and dark mode keep working;
+// - brand tokens (logo, primary gradient, accents) stay fixed.
+// Tokens live on body because modals, popovers and the selection toolbar render outside the panel.
+
+body {
+  --wm2-brand: #00c16a;
+  --wm2-brand-text: #00a35a;
+  --wm2-brand-gradient: linear-gradient(135deg, #00c16a, #00b4a0);
+  --wm2-brand-soft: rgb(0 193 106 / 10%);
+  --wm2-brand-shadow: 0 6px 16px -6px rgb(0 193 106 / 60%);
+  --wm2-secondary: #f43098;
+  --wm2-secondary-soft: rgb(244 48 152 / 10%);
+  --wm2-info: #00a3e0;
+  --wm2-info-soft: rgb(0 186 254 / 12%);
+  --wm2-warning: #d99a00;
+  --wm2-warning-soft: rgb(252 183 0 / 15%);
+  --wm2-error: #f0506e;
+  --wm2-error-soft: rgb(255 98 125 / 12%);
+  --wm2-success: #00a35a;
+  --wm2-success-soft: rgb(0 211 144 / 14%);
+
+  --wm2-surface: var(--background-primary);
+  --wm2-soft: color-mix(in srgb, var(--text-normal) 4%, transparent);
+  --wm2-line: color-mix(in srgb, var(--text-normal) 7%, transparent);
+  --wm2-muted: color-mix(in srgb, var(--text-normal) 50%, transparent);
+  --wm2-faint: color-mix(in srgb, var(--text-normal) 40%, transparent);
+  --wm2-card-border: transparent;
+  --wm2-card-shadow: 0 1px 2px rgb(16 24 40 / 4%), 0 10px 28px -10px rgb(16 24 40 / 12%);
+  --wm2-btn-shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 0 0 1px rgb(16 24 40 / 4%);
+  --wm2-float-shadow: 0 20px 60px -24px rgb(16 24 40 / 30%), 0 0 0 1px rgb(16 24 40 / 6%);
+  --wm2-radius-card: 18px;
+  --wm2-radius-row: 12px;
+  --wm2-highlight: linear-gradient(100deg, #e3fbef, #eef3ff 60%, #fdf0f7);
+  --wm2-panel-bg:
+    radial-gradient(at 100% 0%, rgb(219 230 255 / 55%) 0, transparent 50%),
+    radial-gradient(at 0% 100%, rgb(201 245 223 / 45%) 0, transparent 50%),
+    var(--background-secondary);
+  --wm2-glass: rgb(255 255 255 / 78%);
+  --wm2-glass-border: rgb(255 255 255 / 90%);
+  --wm2-focus: color-mix(in srgb, var(--wm2-brand) 70%, transparent);
+  --wm2-hover: color-mix(in srgb, var(--text-normal) 6%, transparent);
+  --wm2-pressed: color-mix(in srgb, var(--text-normal) 10%, transparent);
+  --wm2-ease: cubic-bezier(0.2, 0, 0, 1);
+  --wm2-scrollbar: color-mix(in srgb, var(--text-normal) 18%, transparent);
+}
+
+// Glass falls back to solid cards with a 1px border in dark themes so nothing looks washed out.
+body.theme-dark {
+  --wm2-surface: var(--background-secondary);
+  --wm2-card-border: var(--background-modifier-border);
+  --wm2-card-shadow: none;
+  --wm2-btn-shadow: 0 0 0 1px var(--background-modifier-border);
+  --wm2-float-shadow: 0 20px 60px -20px rgb(0 0 0 / 60%), 0 0 0 1px var(--background-modifier-border);
+  --wm2-highlight: linear-gradient(100deg, rgb(0 193 106 / 14%), rgb(90 120 255 / 10%) 60%, rgb(244 48 152 / 10%)), var(--background-secondary);
+  --wm2-panel-bg: radial-gradient(at 100% 0%, rgb(0 193 106 / 12%) 0, transparent 50%), var(--background-primary);
+  --wm2-glass: var(--background-secondary);
+  --wm2-glass-border: var(--background-modifier-border);
+  --wm2-brand-text: #2bd98a;
+  --wm2-success: #2bd98a;
+}
+
+@keyframes wm2-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes wm2-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes wm2-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes wm2-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+@keyframes wm2-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px var(--background-secondary), 0 0 0 2px rgb(252 183 0 / 0%);
+  }
+
+  50% {
+    box-shadow: 0 0 0 2px var(--background-secondary), 0 0 0 5px rgb(252 183 0 / 30%);
+  }
+}
+
+// One focus ring for every shared control: keyboard users see the brand color, mouse users see nothing.
+:is(
+    button.wm2-btn,
+    button.wm2-icon-btn,
+    button.wm2-brand,
+    button.wm2-chip,
+    button.wm2-link-button,
+    button.wm2-plain-button,
+    .wm2-segmented button,
+    .wisemindai-obsidian-root button.wm2-tab
+  ):focus-visible {
+  outline: 2px solid var(--wm2-focus);
+  outline-offset: 1px;
+}
+
+// ---------- Shared building blocks ----------
+.wm2-muted {
+  margin: 0;
+  color: var(--wm2-muted);
+  font-size: 12px;
+}
+
+.wm2-text-warning {
+  margin: 0;
+  color: var(--wm2-warning);
+  font-size: 12px;
+}
+
+.wm2-truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wm2-clamp-2 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.wm2-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.wm2-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.wm2-center {
+  justify-content: center;
+  text-align: center;
+}
+
+.wm2-chips {
+  gap: 4px;
+}
+
+// Buttons. Specificity is raised with the button element so Obsidian's global button rules lose.
+button.wm2-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  border: 1px solid var(--wm2-card-border);
+  border-radius: 999px;
+  padding: 0 14px;
+  background: var(--wm2-surface);
+  color: var(--text-normal);
+  font-size: 13px;
+  font-weight: var(--font-normal);
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: var(--wm2-btn-shadow);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    filter 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.1s var(--wm2-ease);
+
+  .wm-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--wm2-surface) 85%, var(--text-normal) 5%);
+  }
+
+  &:active:not(:disabled) {
+    background: color-mix(in srgb, var(--wm2-surface) 80%, var(--text-normal) 9%);
+    transform: scale(0.97);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+    filter: none;
+  }
+
+  &.is-sm {
+    height: 28px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+
+  &.is-xs {
+    height: 22px;
+    gap: 3px;
+    padding: 0 8px;
+    font-size: 11px;
+
+    .wm-icon {
+      width: 12px;
+      height: 12px;
+    }
+  }
+
+  &.is-block {
+    width: 100%;
+  }
+
+  &.is-primary {
+    border-color: transparent;
+    background: var(--wm2-brand-gradient);
+    color: #fff;
+    font-weight: var(--font-medium);
+    box-shadow: var(--wm2-brand-shadow);
+
+    &:hover:not(:disabled) {
+      background: var(--wm2-brand-gradient);
+      filter: brightness(1.06);
+    }
+
+    &:active:not(:disabled) {
+      background: var(--wm2-brand-gradient);
+      filter: brightness(0.95);
+      box-shadow: none;
+    }
+
+    &:disabled {
+      filter: saturate(0.6);
+    }
+  }
+
+  &.is-ghost {
+    border-color: transparent;
+    background: transparent;
+    color: var(--wm2-muted);
+    box-shadow: none;
+
+    &:hover:not(:disabled) {
+      background: var(--wm2-hover);
+      color: var(--text-normal);
+    }
+
+    &:active:not(:disabled) {
+      background: var(--wm2-pressed);
+    }
+  }
+
+  &.is-link {
+    color: var(--wm2-brand-text);
+
+    &:hover:not(:disabled) {
+      color: var(--wm2-brand-text);
+    }
+  }
+}
+
+button.wm2-icon-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+  color: var(--wm2-muted);
+  box-shadow: none;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.1s var(--wm2-ease);
+
+  .wm-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  &:hover:not(:disabled) {
+    background: var(--wm2-hover);
+    color: var(--text-normal);
+  }
+
+  &:active:not(:disabled) {
+    background: var(--wm2-pressed);
+    transform: scale(0.92);
+  }
+
+  &.is-active {
+    color: var(--wm2-brand-text);
+  }
+
+  &.is-open {
+    background: var(--wm2-pressed);
+    color: var(--text-normal);
+  }
+
+  &.is-danger:hover:not(:disabled),
+  &.is-confirming {
+    background: var(--wm2-error-soft);
+    color: var(--wm2-error);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  &.is-sm {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+
+    .wm-icon {
+      width: 14px;
+      height: 14px;
+    }
+  }
+}
+
+button.wm2-link-button,
+button.wm2-plain-button {
+  height: auto;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+button.wm2-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  min-width: 0;
+  border-radius: 4px;
+  color: var(--wm2-brand-text);
+  font-size: 12px;
+  text-underline-offset: 2px;
+  transition: opacity 0.15s ease;
+
+  .wm-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  &:hover:not(:disabled) {
+    background: transparent;
+    text-decoration: underline;
+  }
+
+  &:active:not(:disabled) {
+    opacity: 0.75;
+  }
+}
+
+button.wm2-plain-button {
+  color: inherit;
+  font: inherit;
+}
+
+// Badges (daisyUI badge-soft / badge-ghost look).
+.wm2-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 8px;
+  background: var(--wm2-soft);
+  color: var(--wm2-muted);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: none;
+
+  .wm-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  &.is-accent,
+  &.is-success {
+    background: var(--wm2-success-soft);
+    color: var(--wm2-success);
+  }
+
+  &.is-secondary {
+    background: var(--wm2-secondary-soft);
+    color: var(--wm2-secondary);
+  }
+
+  &.is-info {
+    background: var(--wm2-info-soft);
+    color: var(--wm2-info);
+  }
+
+  &.is-due {
+    background: var(--wm2-warning-soft);
+    color: var(--wm2-warning);
+  }
+
+  &.is-new {
+    background: var(--wm2-info-soft);
+    color: var(--wm2-info);
+  }
+}
+
+// The hover tint is a background-image layer so it works on top of every chip color variant.
+button.wm2-chip {
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s var(--wm2-ease);
+
+  &:hover:not(:disabled) {
+    background-image: linear-gradient(var(--wm2-hover), var(--wm2-hover));
+  }
+
+  &:active:not(:disabled) {
+    background-image: linear-gradient(var(--wm2-pressed), var(--wm2-pressed));
+    transform: scale(0.96);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.wm2-badge {
+  min-width: 18px;
+  height: 16px;
+  border-radius: 999px;
+  padding: 0 5px;
+  background: var(--wm2-secondary);
+  color: #fff;
+  font-size: 10px;
+  font-weight: var(--font-semibold);
+  line-height: 16px;
+  text-align: center;
+  animation: wm2-pop-in 0.2s var(--wm2-ease);
+}
+
+.wm2-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--wm2-line);
+  border-top-color: var(--wm2-brand);
+  border-radius: 50%;
+  animation: wm2-spin 0.8s linear infinite;
+}
+
+.wm2-spin {
+  animation: wm2-spin 1s linear infinite;
+}
+
+// Segmented control (daisyUI tabs-box tabs-xs).
+.wm2-segmented {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  border-radius: 10px;
+  padding: 3px;
+  background: var(--wm2-soft);
+
+  button {
+    height: 24px;
+    border: 0;
+    border-radius: 7px;
+    padding: 0 10px;
+    background: transparent;
+    color: var(--wm2-muted);
+    font-size: 12px;
+    box-shadow: none;
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.1s var(--wm2-ease);
+
+    &:hover:not(:disabled) {
+      background: var(--wm2-hover);
+      color: var(--text-normal);
+    }
+
+    &:active:not(:disabled) {
+      transform: scale(0.96);
+    }
+
+    &.is-active,
+    &.is-active:hover:not(:disabled) {
+      background: var(--wm2-surface);
+      color: var(--text-normal);
+      box-shadow: var(--wm2-btn-shadow);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.wm2-card {
+  border: 1px solid var(--wm2-card-border);
+  border-radius: var(--wm2-radius-card);
+  padding: 14px;
+  background: var(--wm2-surface);
+  box-shadow: var(--wm2-card-shadow);
+
+  &.is-highlight {
+    background: var(--wm2-highlight);
+  }
+}
+
+.wm2-tile {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--wm2-brand-soft);
+  color: var(--wm2-brand-text);
+
+  .wm-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  &.is-secondary {
+    background: var(--wm2-secondary-soft);
+    color: var(--wm2-secondary);
+  }
+
+  &.is-info {
+    background: var(--wm2-info-soft);
+    color: var(--wm2-info);
+  }
+
+  &.is-warning {
+    background: var(--wm2-warning-soft);
+    color: var(--wm2-warning);
+  }
+
+  &.is-error {
+    background: var(--wm2-error-soft);
+    color: var(--wm2-error);
+  }
+}
+
+kbd {
+  font-size: 10px;
+}
+
+// ---------- Shell ----------
+.wm2-shell {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--wm2-panel-bg);
+  font-size: 13px;
+}
+
+.wm2-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  border-bottom: 1px solid var(--wm2-line);
+  padding: 0 12px;
+}
+
+button.wm2-brand {
+  flex: none;
+  height: auto;
+  border: 0;
+  border-radius: 8px;
+  padding: 2px;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  transition: transform 0.15s var(--wm2-ease);
+
+  &:hover {
+    background: transparent;
+    transform: scale(1.06);
+  }
+
+  &:active {
+    transform: scale(0.94);
+  }
+}
+
+.wm2-logo {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+}
+
+.wm2-logo-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+
+.wm2-logo-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--wm2-faint);
+  box-shadow: 0 0 0 2px var(--background-secondary);
+  transition: background-color 0.25s ease;
+
+  &.is-connected {
+    background: #00d390;
+  }
+
+  &.is-disconnected {
+    background: #ff627d;
+  }
+
+  &.is-checking {
+    background: #fcb700;
+    animation: wm2-dot-pulse 1.1s ease-in-out infinite;
+  }
+}
+
+.wm2-tabs {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  gap: 2px;
+  min-width: 0;
+  border-radius: 10px;
+  padding: 3px;
+  overflow-x: auto;
+  background: var(--wm2-soft);
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+// Sliding "pill" behind the active tab; reka-ui measures the active trigger and feeds the two variables.
+.wm2-tab-indicator {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  z-index: 0;
+  width: var(--reka-tabs-indicator-size);
+  border-radius: 7px;
+  background: var(--wm2-surface);
+  box-shadow: var(--wm2-btn-shadow);
+  transform: translateX(var(--reka-tabs-indicator-position));
+  transition:
+    transform 0.25s var(--wm2-ease),
+    width 0.25s var(--wm2-ease);
+  pointer-events: none;
+}
+
+.wisemindai-obsidian-root button.wm2-tab {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 8px;
+  background: transparent;
+  color: var(--wm2-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow: none;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s var(--wm2-ease);
+
+  .wm-icon {
+    width: 14px;
+    height: 14px;
+    transition: color 0.15s ease;
+  }
+
+  &:hover {
+    background: var(--wm2-hover);
+    color: var(--text-normal);
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &.is-active {
+    background: var(--wm2-surface);
+    color: var(--text-normal);
+    box-shadow: var(--wm2-btn-shadow);
+
+    .wm-icon {
+      color: var(--wm2-brand);
+    }
+  }
+
+  .wm2-badge {
+    margin-left: 1px;
+  }
+}
+
+// Once the sliding indicator is mounted it paints the active background instead of the tab itself.
+.wm2-tabs:has(> .wm2-tab-indicator) button.wm2-tab.is-active {
+  background: transparent;
+  box-shadow: none;
+}
+
+.wm2-header-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  margin-left: auto;
+}
+
+@container (max-width: 340px) {
+  .wm2-tab-label {
+    display: none;
+  }
+
+  .wisemindai-obsidian-root button.wm2-tab {
+    padding: 0 7px;
+  }
+}
+
+@container (max-width: 300px) {
+  .wm2-header {
+    gap: 6px;
+    padding: 0 8px;
+  }
+
+  .wm2-main {
+    padding: 12px;
+  }
+}
+
+.wm2-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+// v-show toggles display, which restarts this animation every time a tab becomes visible.
+.wm2-tab-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  animation: wm2-rise-in 0.2s var(--wm2-ease);
+
+  > .wm-tab-content,
+  .wm2-assistant > .wm-tab-content,
+  .wm2-assistant > .wm2-keep-pane {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+// Host for the four keep-alive tabs + transcription overlay swap (PanelApp).
+.wm2-tabs-stack {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.wm2-task-banner {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: var(--wm2-brand-soft);
+  color: var(--wm2-brand-text);
+  font-size: 12px;
+  animation: wm2-rise-in 0.2s var(--wm2-ease);
+}
+
+// Shell-level enter/leave for the onboarding card and other blocks wrapped in <Transition name="wm2-collapse">.
+.wm2-collapse-enter-active,
+.wm2-collapse-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s var(--wm2-ease);
+}
+
+.wm2-collapse-enter-from,
+.wm2-collapse-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+}
+
+.wm2-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wm2-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 20px;
+  margin: 0;
+  color: var(--wm2-muted);
+  font-size: 11px;
+  font-weight: var(--font-medium);
+
+  small {
+    color: var(--wm2-faint);
+    font-size: 11px;
+    font-weight: var(--font-normal);
+  }
+}
+
+.wm2-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wm2-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--wm2-radius-row);
+  padding: 6px 8px;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--wm2-surface) 80%, transparent);
+  }
+
+  > .wm-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    color: var(--wm2-faint);
+  }
+}
+
+.wm2-list-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 13px;
+  text-align: left;
+
+  small {
+    font-size: 11px;
+  }
+}
+
+.wm2-list-card {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 0;
+    padding: 9px 12px;
+    font-size: 12px;
+
+    & + li {
+      border-top: 1px solid var(--wm2-line);
+    }
+  }
+}
+
+.wm2-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 16px;
+  color: var(--wm2-muted);
+  text-align: center;
+
+  p {
+    margin: 0;
+  }
+
+  &.is-compact {
+    padding: 16px;
+  }
+}
+
+.wm2-empty-icon {
+  width: 32px;
+  height: 32px;
+  color: var(--wm2-faint);
+}
+
+// ---------- Onboarding ----------
+.wm2-onboarding {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.wm2-onboarding-header,
+.wm2-onboarding-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wm2-onboarding-header strong {
+  flex: 1;
+  font-size: 14px;
+}
+
+.wm2-onboarding-footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--wm2-line);
+  padding-top: 12px;
+
+  .wm2-onboarding-progress-text {
+    margin-right: auto;
+  }
+}
+
+.wm2-onboarding-progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+
+  span {
+    height: 3px;
+    border-radius: 999px;
+    background: var(--wm2-soft);
+    transition: background-color 0.3s ease;
+
+    &.is-done,
+    &.is-active {
+      background: var(--wm2-brand);
+    }
+
+    &.is-active {
+      background: color-mix(in srgb, var(--wm2-brand) 55%, transparent);
+    }
+  }
+}
+
+.wm2-onboarding-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    gap: 10px;
+  }
+
+  li:not(.is-active) .wm2-onboarding-step-title {
+    color: var(--wm2-muted);
+    font-weight: var(--font-normal);
+  }
+
+  li.is-active .wm2-onboarding-index {
+    background: var(--wm2-brand-gradient);
+    color: #fff;
+    box-shadow: var(--wm2-brand-shadow);
+  }
+
+  li.is-done .wm2-onboarding-index {
+    background: var(--wm2-success-soft);
+    color: var(--wm2-success);
+  }
+}
+
+.wm2-onboarding-index {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--wm2-soft);
+  color: var(--wm2-muted);
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+
+  .wm-icon {
+    width: 14px;
+    height: 14px;
+    animation: wm2-pop-in 0.2s var(--wm2-ease);
+  }
+}
+
+.wm2-onboarding-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 2px;
+
+  p {
+    margin: 0;
+    color: var(--wm2-muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+}
+
+// Step titles double as "jump to step" buttons; they must still read as plain text.
+button.wm2-onboarding-step-title {
+  align-self: flex-start;
+  max-width: 100%;
+  border-radius: 6px;
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+  text-align: left;
+  transition: color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    color: var(--text-normal);
+  }
+
+  &:disabled {
+    opacity: 1;
+    cursor: default;
+  }
+}
+
+.wm2-onboarding-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: wm2-rise-in 0.22s var(--wm2-ease);
+}
+
+// ---------- Assistant ----------
+.wm2-assistant,
+.wm2-workbench {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wm2-assistant {
+  gap: 12px;
+}
+
+.wm2-workbench {
+  gap: 16px;
+}
+
+.wm2-workbench-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.wm2-subbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+
+  strong {
+    flex: 1;
+    font-size: 13px;
+  }
+}
+
+.wm2-note-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.wm2-note-title {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  strong {
+    font-weight: var(--font-medium);
+  }
+
+  small {
+    font-size: 11px;
+  }
+}
+
+.wm2-note-card .wm2-chips {
+  margin-top: 10px;
+}
+
+.wm2-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+
+  &.is-two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 320px) {
+  .wm2-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.wm2-subbar-sep {
+  flex: none;
+  margin: 0 2px;
+  font-size: 12px;
+}
+
+.wm2-note-status {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wm2-badge.is-warning {
+  background: var(--wm2-warning-soft);
+  color: var(--wm2-warning);
+}
+
+.wisemindai-obsidian-root button.wm2-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--wm2-card-border);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: var(--wm2-surface);
+  color: var(--text-normal);
+  font-size: 13px;
+  font-weight: var(--font-normal);
+  white-space: nowrap;
+  box-shadow: var(--wm2-btn-shadow);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wm-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    color: var(--wm2-brand);
+  }
+
+  &.is-secondary .wm-icon {
+    color: var(--wm2-secondary);
+  }
+
+  &.is-info .wm-icon {
+    color: var(--wm2-info);
+  }
+
+  &:hover {
+    box-shadow: var(--wm2-card-shadow);
+    transform: translateY(-1px);
+  }
+}
+
+.wm2-composer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  padding: 10px;
+
+  textarea {
+    width: 100%;
+    min-height: 44px;
+    border: 0;
+    padding: 2px 4px;
+    background: transparent;
+    font-size: 13px;
+    resize: none;
+    box-shadow: none;
+
+    &:focus,
+    &:focus-visible {
+      border: 0;
+      box-shadow: none;
+    }
+  }
+}
+
+.wm2-composer-scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.wm2-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+button.wm2-send {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: var(--wm2-brand-gradient);
+  color: #fff;
+  box-shadow: var(--wm2-brand-shadow);
+  cursor: pointer;
+
+  .wm-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  &:hover {
+    filter: brightness(1.06);
+  }
+}
+
+// ---------- Review ----------
+.wm2-review {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.wm2-review-overview {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.wm2-review-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.wm2-review-hero-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wm2-review-count {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+
+  strong {
+    font-size: 26px;
+    font-weight: var(--font-bold);
+    line-height: 1;
+  }
+
+  span {
+    color: var(--wm2-muted);
+    font-size: 13px;
+  }
+}
+
+.wm2-review-session {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  outline: none;
+
+  > header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+.wm2-progress {
+  flex: 1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--wm2-soft);
+
+  span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--wm2-brand-gradient);
+    transition: width 0.2s ease;
+  }
+}
+
+.wm2-flashcard {
+  display: flex;
+  // Size to the question and answer. Growing to fill the pane left a tall blank card.
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 20px;
+
+  hr {
+    margin: 4px 0;
+    border: 0;
+    border-top: 1px dashed var(--wm2-line);
+  }
+}
+
+.wm2-flashcard-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wisemindai-obsidian-root .wm2-flashcard-question.wm-markdown {
+  font-size: 16px;
+  font-weight: var(--font-medium);
+  line-height: 1.7;
+}
+
+.wm2-review-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wm2-grade-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wisemindai-obsidian-root button.wm2-grade {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  height: auto;
+  border: 1px solid var(--wm2-card-border);
+  border-radius: 14px;
+  padding: 8px 4px;
+  background: var(--wm2-surface);
+  box-shadow: var(--wm2-btn-shadow);
+  cursor: pointer;
+
+  strong {
+    font-size: 13px;
+    font-weight: var(--font-medium);
+  }
+
+  small {
+    color: var(--wm2-faint);
+    font-size: 10px;
+  }
+
+  kbd {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    border: 0;
+    background: transparent;
+    color: var(--wm2-faint);
+    box-shadow: none;
+  }
+
+  &.is-forgot strong {
+    color: var(--wm2-error);
+  }
+
+  &.is-vague strong {
+    color: var(--wm2-warning);
+  }
+
+  &.is-remember {
+    box-shadow: var(--wm2-btn-shadow), 0 0 0 1px rgb(0 193 106 / 40%);
+
+    strong {
+      color: var(--wm2-brand-text);
+    }
+  }
+
+  &:hover {
+    box-shadow: var(--wm2-card-shadow);
+  }
+}
+
+.wm2-review-finish {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 16px;
+  text-align: center;
+
+  h3,
+  p {
+    margin: 0;
+  }
+}
+
+.wm2-finish-icon {
+  width: 44px;
+  height: 44px;
+  color: var(--wm2-brand);
+}
+
+// ---------- Modals (native Obsidian Modal with brand buttons) ----------
+.modal.wm2-modal {
+  border-radius: var(--wm2-radius-card);
+  box-shadow: var(--wm2-float-shadow);
+
+  .modal-button-container {
+    gap: 8px;
+  }
+
+  button {
+    border-radius: 999px;
+    padding: 0 14px;
+  }
+
+  button.mod-cta {
+    border: 0;
+    background: var(--wm2-brand-gradient);
+    color: #fff;
+    box-shadow: var(--wm2-brand-shadow);
+
+    &:hover {
+      filter: brightness(1.06);
+    }
+  }
+
+  button.clickable-icon {
+    padding: 4px;
+    border-radius: 8px;
+  }
+}
+
+// Search modal
+.modal.wm2-search-modal {
+  width: min(640px, 92vw);
+  padding: 0;
+  overflow: hidden;
+
+  .modal-content {
+    padding: 0;
+  }
+
+  .modal-header {
+    display: none;
+  }
+}
+
+.wm2-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--wm2-line);
+  padding: 12px 44px 12px 14px;
+}
+
+.wm2-search-input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font-size: 15px;
+  box-shadow: none;
+
+  &:focus,
+  &:focus-visible {
+    border: 0;
+    box-shadow: none;
+  }
+}
+
+.wm2-search-results {
+  max-height: 52vh;
+  overflow: auto;
+  padding: 6px 8px;
+}
+
+.wm2-search-group {
+  padding: 10px 8px 4px;
+  color: var(--wm2-faint);
+  font-size: 11px;
+  font-weight: var(--font-medium);
+}
+
+.wm2-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--wm2-radius-row);
+  padding: 8px 10px;
+  cursor: pointer;
+
+  &.is-selected {
+    background: var(--wm2-brand-soft);
+  }
+}
+
+.wm2-search-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.wm2-search-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wm2-search-meta {
+  overflow: hidden;
+  color: var(--wm2-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wm2-search-actions {
+  display: none;
+  gap: 2px;
+
+  .wm2-search-row.is-selected & {
+    display: flex;
+  }
+}
+
+.wm2-search-hint {
+  padding: 16px 10px;
+  color: var(--wm2-muted);
+  font-size: 12px;
+}
+
+.wm2-search-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  border-top: 1px solid var(--wm2-line);
+  padding: 9px 14px;
+  background: var(--wm2-soft);
+  color: var(--wm2-faint);
+  font-size: 11px;
+}
+
+// Rewrite preview modal
+.modal.wm2-rewrite-modal {
+  width: min(680px, 92vw);
+}
+
+.wm2-rewrite-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.wm2-rewrite-body {
+  min-height: 96px;
+  max-height: 50vh;
+  overflow: auto;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: var(--wm2-soft);
+}
+
+.wm2-rewrite-text {
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  &.is-original {
+    color: var(--wm2-muted);
+  }
+}
+
+.wm2-diff {
+  ins {
+    border-radius: 3px;
+    background: rgb(0 193 106 / 16%);
+    text-decoration: none;
+  }
+
+  del {
+    border-radius: 3px;
+    background: rgb(255 98 125 / 14%);
+    color: var(--wm2-muted);
+    text-decoration-color: rgb(255 98 125 / 60%);
+  }
+}
+
+.wm2-rewrite-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.wm2-rewrite-loading {
+  color: var(--wm2-muted);
+}
+
+.wm2-rewrite-refine {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+
+  input {
+    flex: 1;
+    border-radius: 999px;
+    padding: 0 14px;
+  }
+}
+
+// ---------- Editor selection toolbar (glass capsule) ----------
+.wm2-selection-toolbar {
+  position: fixed;
+  top: var(--wm-toolbar-top, 0);
+  left: var(--wm-toolbar-left, 0);
+  z-index: var(--layer-popover);
+  display: none;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--wm2-glass-border);
+  border-radius: 999px;
+  padding: 4px;
+  background: var(--wm2-glass);
+  box-shadow: var(--wm2-float-shadow);
+  backdrop-filter: blur(24px);
+
+  &.is-visible {
+    display: flex;
+  }
+
+  &.is-measuring {
+    visibility: hidden;
+  }
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    border-radius: 999px;
+    padding: 0 10px;
+    color: var(--text-normal);
+    font-size: 12px;
+
+    &:first-child {
+      color: var(--wm2-brand-text);
+      font-weight: var(--font-medium);
+    }
+
+    &:hover {
+      background: var(--wm2-soft);
+    }
+  }
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.wm2-empty > strong {
+  color: var(--text-normal);
+  font-size: 14px;
+  font-weight: var(--font-semibold);
+}
+
+.wm2-workbench-due {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+
+  > .wm-icon {
+    flex: none;
+    color: var(--wm2-secondary);
+  }
+
+  > .wm2-truncate {
+    flex: 1;
+  }
+}
+
+// Send modal (P11-B)
+.modal.wm2-send-modal {
+  width: min(460px, 92vw);
+
+  .wm2-send-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+  }
+
+  .wm2-send-logo {
+    width: 22px;
+    height: 22px;
+  }
+
+  .wm2-send-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .wm2-send-icon {
+    display: inline-flex;
+    flex: none;
+
+    svg {
+      width: 15px;
+      height: 15px;
+    }
+  }
+
+  .wm2-send-targets {
+    align-self: flex-start;
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 7px;
+      padding: 0 10px;
+
+      &.is-active .wm2-send-icon {
+        color: var(--wm2-brand);
+      }
+    }
+  }
+
+  .wm2-send-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--wm2-card-border);
+    border-radius: var(--wm2-radius-row);
+    padding: 0 10px;
+    background: var(--wm2-surface);
+    color: var(--wm2-faint);
+
+    &:focus-within {
+      border-color: var(--wm2-brand);
+      box-shadow: 0 0 0 3px var(--wm2-brand-soft);
+    }
+
+    input[type='text'] {
+      flex: 1;
+      height: 32px;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      box-shadow: none;
+      color: var(--text-normal);
+      font-size: 13px;
+    }
+  }
+
+  .wm2-send-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 260px;
+    min-height: 80px;
+    overflow-y: auto;
+  }
+
+  button.wm2-send-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 32px;
+    border: 0;
+    border-radius: 10px;
+    padding: 0 8px;
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-normal);
+    font-size: 13px;
+    justify-content: flex-start;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: var(--wm2-soft);
+    }
+
+    &.is-active {
+      background: var(--wm2-brand-soft);
+
+      .wm2-send-icon {
+        color: var(--wm2-brand);
+      }
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .wm2-send-option-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .wm2-send-option-meta {
+    flex: none;
+    color: var(--wm2-faint);
+    font-size: 11px;
+  }
+
+  .wm2-send-empty {
+    display: flex;
+    justify-content: center;
+    padding: 24px 0;
+    font-size: 12px;
+  }
+
+  .wm2-send-footer button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+}
+
+// Status bar (P11-C)
+.wisemind-panel-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+
+  .wm2-status-icon {
+    display: inline-flex;
+
+    svg {
+      width: 13px;
+      height: 13px;
+      color: var(--wm2-brand);
+    }
+  }
+}
+
+.wm2-status-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--wm2-faint);
+
+  &.is-connected {
+    background: #00d390;
+  }
+
+  &.is-due,
+  &.is-warning {
+    background: #fcb700;
+  }
+
+  &.is-disconnected {
+    background: #ff627d;
+  }
+
+  &.is-transcribing {
+    background: #ff627d;
+    animation: wm2-status-pulse 1.2s ease-in-out infinite;
+  }
+
+  &.is-syncing {
+    border: 1.5px solid var(--wm2-brand);
+    border-right-color: transparent;
+    background: transparent;
+    animation: wm2-status-spin 0.8s linear infinite;
+  }
+}
+
+@keyframes wm2-status-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes wm2-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Actionable notices (task finished, daily review)
+.wm2-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.wm2-notice-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice button.wm2-notice-action {
+  flex: none;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: var(--wm2-brand-gradient);
+  box-shadow: none;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+// ---------- 2.0 additions ----------
+.wm2-chip {
+  &.is-warning {
+    background: var(--wm2-warning-soft);
+    color: var(--wm2-warning);
+  }
+
+  &.is-error {
+    background: var(--wm2-error-soft);
+    color: var(--wm2-error);
+  }
+}
+
+.wm2-list-row {
+  &.is-clickable {
+    cursor: pointer;
+  }
+
+  &.is-muted .wm2-list-main {
+    opacity: 0.55;
+  }
+}
+
+.wm2-capability-banner {
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+// Editor slash command suggestions (/wm)
+.wm2-slash-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+}
+
+.wm2-slash-title {
+  font-size: 13px;
+  font-weight: var(--font-semibold);
+}
+
+.wm2-slash-desc {
+  color: var(--wm2-muted);
+  font-size: 11px;
+}
+
+// AI task modal (plan -> confirm -> run -> undo)
+.modal.wm2-task-modal {
+  width: min(600px, 94vw);
+}
+
+.wm2-task-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  > .wm2-sync-alert {
+    margin-bottom: 2px;
+  }
+}
+
+.wm2-task-label {
+  color: var(--wm2-muted);
+  font-size: 12px;
+  font-weight: var(--font-semibold);
+}
+
+textarea.wm2-task-instruction {
+  width: 100%;
+  min-height: 92px;
+  border-radius: var(--wm2-radius-row);
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.wm2-task-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 96px;
+  overflow: auto;
+}
+
+.wm2-task-note {
+  max-width: 100%;
+
+  > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  button.clickable-icon {
+    height: 16px;
+    padding: 0;
+    color: inherit;
+  }
+}
+
+.wm2-task-hint {
+  color: var(--wm2-faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.wm2-task-summary {
+  font-size: 13px;
+  font-weight: var(--font-semibold);
+}
+
+.wm2-task-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  margin: 0;
+  overflow: auto;
+  padding: 0;
+  list-style: none;
+}
+
+.wm2-task-step {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--wm2-line);
+  border-radius: var(--wm2-radius-row);
+  padding: 8px 10px;
+  font-size: 12px;
+
+  &.is-running {
+    border-color: color-mix(in srgb, var(--wm2-brand) 45%, transparent);
+  }
+
+  &.is-done .wm2-task-step-status {
+    color: var(--wm2-success);
+  }
+
+  &.is-failed .wm2-task-step-status {
+    color: var(--wm2-error);
+  }
+
+  &.is-skipped,
+  &.is-reverted {
+    opacity: 0.6;
+  }
+}
+
+.wm2-task-step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wm2-task-step-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: var(--font-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wm2-task-step-status {
+  flex: none;
+  color: var(--wm2-muted);
+  font-size: 11px;
+}
+
+.wm2-task-step-path {
+  overflow: hidden;
+  color: var(--wm2-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wm2-task-step-error {
+  color: var(--wm2-error);
+  font-size: 11px;
+}
+
+.wm2-task-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wm2-task-button-icon {
+  display: inline-flex;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+// ---------- Overlay header (recording) ----------
+.wm2-header-overlay {
+  .wm2-overlay-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: var(--font-medium);
+  }
+}
+
+.wm2-shell.is-overlay .wm2-main {
+  animation: wm2-rise-in 0.22s var(--wm2-ease);
+}
+
+.wm2-header-swap-enter-active {
+  animation: wm2-fade-in 0.18s ease-out;
+}
+
+.wm2-header-swap-leave-active {
+  transition: opacity 0.12s ease;
+}
+
+.wm2-header-swap-leave-to {
+  opacity: 0;
+}
+
+// ---------- Task banner as button ----------
+button.wm2-task-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wm2-subbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+// ---------- Background tasks sheet ----------
+.wm2-bg-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(560px, calc(100vh - 48px));
+}
+
+.wm2-bg-tasks-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.wm2-bg-tasks-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.wm2-bg-tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+}
+
+button.wm2-bg-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--wm2-card-border);
+  border-radius: var(--wm2-radius-row);
+  padding: 10px 12px;
+  background: var(--wm2-surface);
+  box-shadow: var(--wm2-card-shadow);
+  color: var(--text-normal);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.15s var(--wm2-ease),
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--wm2-float-shadow);
+  }
+
+  .wm-icon.is-success {
+    color: var(--wm2-success);
+  }
+
+  .wm-icon.is-error {
+    color: var(--wm2-error);
+  }
+}
+
+.wm2-bg-task-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wm2-bg-task-progress {
+  width: 100%;
+  height: 4px;
+  margin-top: 6px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  appearance: none;
+  background: var(--wm2-soft);
+
+  &::-webkit-progress-bar {
+    background: var(--wm2-soft);
+  }
+
+  &::-webkit-progress-value {
+    background: var(--wm2-brand-gradient);
+  }
+}
+
+.wm2-bg-tasks-empty,
+.wm2-bg-tasks-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+// ---------- Result next steps (N2b) ----------
+.wm2-next-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 8px;
+}
+
+.wm2-next-steps-success {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border-radius: var(--wm2-radius-row);
+  padding: 12px;
+  background: linear-gradient(135deg, var(--wm2-success-soft), transparent 70%), var(--wm2-surface);
+  box-shadow: var(--wm2-card-shadow);
+
+  strong {
+    display: block;
+    font-size: 13px;
+  }
+
+  p {
+    margin: 4px 0 0;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .wm-icon.is-success {
+    flex: none;
+    color: var(--wm2-success);
+  }
+}
+
+.wm2-next-steps-label {
+  color: var(--wm2-muted);
+  font-size: 11px;
+  font-weight: var(--font-medium);
+}
+
+.wm2-next-steps-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+button.wm2-next-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--wm2-card-border);
+  border-radius: var(--wm2-radius-row);
+  padding: 10px 12px;
+  background: var(--wm2-surface);
+  box-shadow: var(--wm2-card-shadow);
+  color: var(--text-normal);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.15s var(--wm2-ease),
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--wm2-brand) 30%, transparent), var(--wm2-card-shadow);
+  }
+
+  strong {
+    display: block;
+    font-size: 13px;
+  }
+
+  span {
+    display: block;
+    margin-top: 2px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .wm-icon {
+    flex: none;
+    margin-top: 1px;
+
+    &.is-info {
+      color: var(--wm2-info);
+    }
+
+    &.is-secondary {
+      color: var(--wm2-secondary);
+    }
+
+    &.is-warning {
+      color: var(--wm2-warning);
+    }
+
+    &.is-primary {
+      color: var(--wm2-brand-text);
+    }
+  }
+}
+
+// ---------- Topics overview (T1) ----------
+.wm2-topics-overview {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  padding: 0 16px 24px;
+  overflow: auto;
+}
+
+.wm2-sync-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.wm2-sync-stage {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.wm2-topics-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.wm2-topics-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--wm2-line);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.wm2-topics-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--wm2-brand);
+
+  &.is-info {
+    background: var(--wm2-info);
+  }
+
+  &.is-secondary {
+    background: var(--wm2-secondary);
+  }
+
+  &.is-accent {
+    background: #7c5cff;
+  }
+
+  &.is-success {
+    background: var(--wm2-success);
+  }
+}
+
+.wm2-topics-meta {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  strong {
+    font-size: 13px;
+  }
+
+  span {
+    font-size: 11px;
+  }
+}
+
+.wm2-topics-note {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.wm2-topics-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.wm2-topics-open-client {
+  margin-top: auto;
+}
+
+// ---------- Sync rule advanced (Y2b) ----------
+.wm2-sync-rule-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: var(--wm2-radius-row);
+  padding: 10px;
+  background: var(--wm2-soft);
+  animation: wm2-rise-in 0.18s var(--wm2-ease);
+}
+
+.wm2-sync-choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--wm2-surface);
+
+  &.is-active {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--wm2-brand) 35%, transparent);
+  }
+
+  strong,
+  small {
+    display: block;
+  }
+
+  small {
+    margin-top: 2px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+}
+
+.wm2-sync-field.is-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+
+  input {
+    margin-top: 2px;
+  }
+
+  strong,
+  small {
+    display: block;
+  }
+
+  small {
+    margin-top: 2px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+}
+
+// ---------- Send modal advanced (Y4b) ----------
+.wm2-send-section-title {
+  margin: 10px 0 6px;
+  color: var(--wm2-muted);
+  font-size: 12px;
+  font-weight: var(--font-medium);
+}
+
+.wm2-send-hint {
+  margin: 4px 0 8px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.wm2-send-after {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.wm2-send-after-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wm2-shell.is-overlay .wm2-main,
+  .wm2-tab-panel,
+  .wm2-topics-overview,
+  .wm2-sync-rule-advanced,
+  .wm2-collapse-enter-active,
+  .wm2-collapse-leave-active,
+  .wm2-view-enter-active,
+  .wm2-view-leave-active,
+  .wm2-header-swap-enter-active,
+  .wm2-header-swap-leave-active,
+  .wm2-keep-pane.is-active {
+    animation: none !important;
+    transition: none !important;
+  }
+}

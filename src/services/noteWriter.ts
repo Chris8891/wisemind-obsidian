@@ -43,3 +43,10 @@ export const saveSummaryAsNewNote = async (
   new Notice(translate(plugin.settings.assistantDefaults.language, 'obsidianMessages.summarySaved', {path}));
   return path;
 };
+
+/** Mirrors the checks in insertTextToActiveNote, which reports a missing note with a Notice instead of throwing. */
+export const hasInsertTarget = (plugin: WiseMindObsidianPlugin) => {
+  const editor = (plugin.app.workspace as any).activeEditor?.editor;
+  if (editor?.replaceSelection) return true;
+  return plugin.app.workspace.getActiveFile()?.extension === 'md';
+};

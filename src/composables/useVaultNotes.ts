@@ -3,7 +3,7 @@ import {useI18n} from 'vue-i18n';
 import { Notice } from 'obsidian';
 
 import type { ObsidianSourceItem } from '../types';
-import { scanVault } from '../vaultScanner';
+import { listVaultMetadata } from '../vaultScanner';
 
 import { usePlugin } from './usePlugin';
 
@@ -23,7 +23,8 @@ export const useVaultNotes = () => {
   const refresh = async () => {
     loading.value = true;
     try {
-      notes.value = await scanVault(plugin.app, {
+      // Picker only needs paths/titles; createAssistantPlan re-reads bodies on confirm.
+      notes.value = listVaultMetadata(plugin.app, {
         maxFileSizeKb: plugin.settings.maxFileSizeKb,
         ignorePatterns: plugin.settings.ignorePatterns,
       });

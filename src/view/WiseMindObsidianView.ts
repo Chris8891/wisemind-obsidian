@@ -28,6 +28,8 @@ export class WiseMindObsidianView extends ItemView {
   }
 
   async onOpen() {
+    this.vueApp?.unmount();
+    this.vueApp = null;
     this.contentEl.empty();
     this.contentEl.addClass('wisemindai-obsidian-view');
     const root = this.contentEl.createDiv({

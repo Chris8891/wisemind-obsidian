@@ -19,12 +19,12 @@
 
 <template>
   <SwitchRoot
-    class="wm-switch"
+    class="wm2-switch"
     :model-value="modelValue"
     :disabled="disabled"
     :aria-label="ariaLabel"
     @update:model-value="value => emit('update:modelValue', Boolean(value))"
   >
-    <SwitchThumb class="wm-switch-thumb" />
+    <SwitchThumb class="wm2-switch-thumb" />
   </SwitchRoot>
 </template>

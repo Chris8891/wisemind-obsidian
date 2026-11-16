@@ -1,0 +1,674 @@
+// Review tab interaction polish. Base review styles live in v2.scss.
+
+$wm2-review-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+@keyframes wm2-review-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@keyframes wm2-review-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes wm2-review-in-forward {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes wm2-review-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes wm2-review-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  70% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@mixin wm2-review-focus-ring {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--wm2-surface), 0 0 0 4px color-mix(in srgb, var(--wm2-brand) 55%, transparent);
+}
+
+.wm2-review {
+  // .wm2-main already leaves 16px. Obsidian's status bar floats over the leaf, so add the rest.
+  padding-bottom: 16px;
+
+  .wm2-chip {
+    font-variant-numeric: tabular-nums;
+  }
+
+  button.wm2-icon-btn:focus-visible,
+  button.wm2-btn:focus-visible,
+  button.wm2-link-button:focus-visible {
+    @include wm2-review-focus-ring;
+  }
+
+  // Primary buttons sit on the brand gradient, so the spinner follows the text color instead.
+  button.wm2-btn .wm2-spinner {
+    border-color: color-mix(in srgb, currentColor 30%, transparent);
+    border-top-color: currentColor;
+  }
+}
+
+// ---------- Overview ----------
+.wm2-review .wm2-review-hero {
+  .wm2-review-count strong {
+    min-width: 1ch;
+  }
+
+  > button.wm2-btn.is-primary:disabled {
+    border-color: transparent;
+    background: var(--wm2-soft);
+    color: var(--wm2-faint);
+    box-shadow: none;
+    filter: none;
+    opacity: 1;
+  }
+
+  > button.wm2-btn.is-primary:not(:disabled):active {
+    transform: scale(0.99);
+  }
+}
+
+.wm2-review-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border-radius: var(--wm2-radius-row);
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--wm2-surface) 70%, transparent);
+  animation: wm2-review-rise 0.24s $wm2-review-ease;
+
+  > .wm-icon {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    color: var(--wm2-success);
+  }
+
+  > button.wm2-btn {
+    flex: none;
+    margin-left: auto;
+  }
+}
+
+.wm2-review-done-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+
+  strong {
+    font-size: 12px;
+    font-weight: var(--font-medium);
+  }
+
+  small {
+    color: var(--wm2-muted);
+    font-size: 11px;
+  }
+}
+
+.wm2-review-section-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+// Rows are full-width buttons; the base list-card li padding moves onto the button.
+.wm2-review .wm2-list-card.wm2-review-list > li {
+  padding: 0;
+}
+
+.wm2-review button.wm2-plain-button.wm2-review-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 0;
+  color: var(--text-normal);
+  font-size: 12px;
+  text-align: left;
+  transition: background-color 0.15s ease;
+
+  .wm2-list-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .wm2-tile {
+    transition: transform 0.15s $wm2-review-ease;
+  }
+
+  .wm2-review-row-play {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: var(--wm2-faint);
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease;
+  }
+
+  .wm2-spinner {
+    flex: none;
+  }
+
+  &:hover:not(:disabled),
+  &.is-starting {
+    background: var(--wm2-soft);
+
+    .wm2-review-row-play {
+      color: var(--wm2-brand-text);
+      opacity: 1;
+    }
+
+    .wm2-tile {
+      transform: scale(1.05);
+    }
+  }
+
+  &:active:not(:disabled) {
+    background: color-mix(in srgb, var(--text-normal) 7%, transparent);
+  }
+
+  &:focus-visible {
+    outline: none;
+    background: var(--wm2-soft);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--wm2-brand) 55%, transparent);
+
+    .wm2-review-row-play {
+      opacity: 1;
+    }
+  }
+
+  // Another deck is starting: block clicks without fading the whole list.
+  &:disabled {
+    cursor: default;
+  }
+
+  &.is-empty {
+    cursor: default;
+
+    .wm2-tile {
+      filter: grayscale(1);
+      opacity: 0.55;
+    }
+
+    .wm2-list-main strong {
+      color: var(--wm2-muted);
+      font-weight: var(--font-normal);
+    }
+  }
+
+  &.is-note {
+    align-items: flex-start;
+
+    .wm2-review-row-play {
+      margin-top: 2px;
+    }
+  }
+}
+
+// ---------- Skeletons ----------
+.wm2-review-skeleton {
+  display: block;
+  flex: none;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--wm2-soft) 25%,
+    color-mix(in srgb, var(--text-normal) 9%, transparent) 50%,
+    var(--wm2-soft) 75%
+  );
+  background-size: 200% 100%;
+  animation: wm2-review-shimmer 1.4s ease-in-out infinite;
+
+  &.is-count {
+    width: 96px;
+    height: 26px;
+    border-radius: 8px;
+  }
+
+  &.is-chip {
+    width: 56px;
+    height: 20px;
+  }
+
+  &.is-button {
+    width: 100%;
+    height: 32px;
+  }
+
+  &.is-title {
+    width: 64px;
+    height: 12px;
+  }
+
+  &.is-tile {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+  }
+
+  &.is-line {
+    flex: 1;
+    height: 12px;
+  }
+}
+
+.wm2-review .wm2-list-card > li.wm2-review-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+// ---------- Session ----------
+.wm2-review .wm2-review-session {
+  min-height: 0;
+  overflow: hidden;
+
+  > header {
+    flex: none;
+  }
+}
+
+.wm2-review-session .wm2-progress span {
+  transition: width 0.35s $wm2-review-ease;
+}
+
+// Long cards scroll inside the card so the reveal / grade buttons never leave the viewport.
+.wm2-review-session .wm2-card.wm2-flashcard {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 16px 18px;
+  animation: wm2-review-in-forward 0.22s $wm2-review-ease;
+
+  &.is-back {
+    animation-name: wm2-review-in-back;
+  }
+}
+
+.wm2-flashcard-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  margin-right: -8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 8px;
+  overflow-wrap: anywhere;
+}
+
+.wm2-flashcard-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: wm2-review-rise 0.22s $wm2-review-ease;
+}
+
+.wm2-review-session .wm2-flashcard-meta {
+  flex: none;
+
+  .wm2-chip {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  button.wm2-link-button {
+    flex: 0 1 auto;
+    max-width: 45%;
+    color: var(--wm2-muted);
+    transition: color 0.15s ease;
+
+    .wm-icon {
+      flex: none;
+    }
+
+    &:hover {
+      color: var(--wm2-brand-text);
+    }
+  }
+}
+
+.wm2-review-session .wm2-review-actions {
+  flex: none;
+}
+
+.wm2-review-session button.wm2-btn.wm2-review-reveal {
+  animation: wm2-review-rise 0.18s $wm2-review-ease;
+
+  &:active {
+    transform: scale(0.99);
+  }
+
+  kbd {
+    border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+    border-radius: 4px;
+    padding: 0 4px;
+    background: color-mix(in srgb, currentColor 14%, transparent);
+    color: inherit;
+    font-size: 10px;
+    line-height: 14px;
+    box-shadow: none;
+  }
+}
+
+.wm2-review-session .wm2-grade-row {
+  animation: wm2-review-rise 0.18s $wm2-review-ease;
+
+  &.is-choosing button.wm2-grade:not(.is-chosen) {
+    opacity: 0.45;
+  }
+}
+
+.wisemindai-obsidian-root .wm2-review-session button.wm2-grade {
+  --wm2-grade-color: var(--wm2-brand);
+  --wm2-grade-soft: var(--wm2-brand-soft);
+
+  min-width: 0;
+  padding: 14px 4px 8px;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    opacity 0.15s ease;
+
+  strong,
+  small {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  small {
+    font-variant-numeric: tabular-nums;
+  }
+
+  kbd {
+    top: 4px;
+    right: 5px;
+    min-width: 14px;
+    border: 1px solid var(--wm2-line);
+    border-radius: 4px;
+    padding: 0 3px;
+    background: var(--wm2-soft);
+    color: var(--wm2-muted);
+    font-size: 9px;
+    line-height: 12px;
+    text-align: center;
+  }
+
+  &.is-forgot {
+    --wm2-grade-color: var(--wm2-error);
+    --wm2-grade-soft: var(--wm2-error-soft);
+  }
+
+  &.is-vague {
+    --wm2-grade-color: var(--wm2-warning);
+    --wm2-grade-soft: var(--wm2-warning-soft);
+  }
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0) scale(0.97);
+  }
+
+  &:focus-visible {
+    @include wm2-review-focus-ring;
+  }
+
+  &.is-chosen {
+    background: var(--wm2-grade-soft);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--wm2-grade-color) 60%, transparent);
+    transform: scale(0.97);
+
+    kbd {
+      border-color: transparent;
+      background: var(--wm2-grade-color);
+      color: var(--text-on-accent);
+    }
+  }
+}
+
+.wm2-review-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 6px;
+  min-height: 22px;
+  color: var(--wm2-faint);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.wm2-review-flash {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: var(--wm2-brand-soft);
+  color: var(--wm2-brand-text);
+  animation: wm2-review-rise 0.18s $wm2-review-ease;
+
+  .wm-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  &.is-warning {
+    background: var(--wm2-warning-soft);
+    color: var(--wm2-warning);
+  }
+}
+
+// ---------- Finish ----------
+.wm2-review .wm2-review-finish {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.wm2-review-session .wm2-review-finish {
+  animation: wm2-review-rise 0.24s $wm2-review-ease;
+
+  .wm2-finish-icon {
+    animation: wm2-review-pop 0.4s $wm2-review-ease;
+  }
+}
+
+.wm2-review-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+  max-width: 320px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    border-radius: var(--wm2-radius-row);
+    padding: 10px 4px;
+    background: var(--wm2-soft);
+    animation: wm2-review-rise 0.3s $wm2-review-ease both;
+
+    &:nth-child(2) {
+      animation-delay: 0.06s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.12s;
+    }
+  }
+
+  strong {
+    font-size: 20px;
+    font-weight: var(--font-bold);
+    line-height: 1.1;
+  }
+
+  span {
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--wm2-muted);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .is-remember strong {
+    color: var(--wm2-brand-text);
+  }
+
+  .is-vague strong {
+    color: var(--wm2-warning);
+  }
+
+  .is-forgot strong {
+    color: var(--wm2-error);
+  }
+}
+
+.wm2-review-finish p.wm2-review-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: var(--wm2-soft);
+  color: var(--wm2-muted);
+  font-size: 12px;
+  animation: wm2-review-rise 0.18s $wm2-review-ease;
+
+  .wm-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+  }
+
+  &.is-saved {
+    background: var(--wm2-success-soft);
+    color: var(--wm2-success);
+  }
+
+  &.is-failed {
+    background: var(--wm2-error-soft);
+    color: var(--wm2-error);
+  }
+}
+
+// ---------- Narrow sidebar ----------
+@container (max-width: 340px) {
+  .wm2-review-session .wm2-card.wm2-flashcard {
+    padding: 14px;
+  }
+
+  .wisemindai-obsidian-root .wm2-review-session button.wm2-grade {
+    padding: 14px 2px 6px;
+
+    strong {
+      font-size: 12px;
+    }
+  }
+
+  .wm2-review-done {
+    flex-wrap: wrap;
+
+    > button.wm2-btn {
+      margin-left: 26px;
+    }
+  }
+}
+
+// ---------- Reduced motion ----------
+@media (prefers-reduced-motion: reduce) {
+  .wm2-review {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+
+    .wm2-spin,
+    .wm2-spinner {
+      animation-duration: 1.5s !important;
+      animation-iteration-count: infinite !important;
+    }
+
+    .wm2-review-skeleton {
+      animation: none !important;
+    }
+
+    .wm2-review-session button.wm2-grade,
+    .wm2-review-row .wm2-tile {
+      transform: none !important;
+    }
+  }
+}

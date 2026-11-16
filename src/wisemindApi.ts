@@ -1,100 +1,179 @@
 import {shell} from 'electron';
 import {Platform} from 'obsidian';
 
-import {openWiseMindConnectionDialog} from './services/connectionDialog';
-import {translate} from './i18n';
+import {WiseMindApiError} from './apiErrors';
+import {type AssistantStreamCallbacks, WiseMindHttpClient} from './apiTransport';
+import {buildWiseMindDeepLink, normalizeNullable, toQuery} from './apiUtils';
 import type {
+  AssistantTaskPlan,
+  CardReviewGrade,
+  FileUpsertPayload,
+  FileUpsertResult,
+  ReviewDueResult,
   TranscriptionDetail,
   TranscriptionMembershipQuota,
   TranscriptionOrganizeResult,
   TranscriptionRecord,
   TranscriptionSegmentUpdate,
   TranscriptionStartOptions,
+  WiseMindAccountUsage,
+  WiseMindCapabilities,
+  WiseMindCardSummary,
   WiseMindFolder,
-  WiseMindLanguageSetting,
   WiseMindSnapshot,
   WiseMindWorkspaceState,
 } from './types';
 
-type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+export {
+  isAbortError,
+  isAiNotConfiguredError,
+  isMembershipLimitError,
+  WiseMindApiError,
+  type WiseMindApiErrorCode,
+  type WiseMindApiRequestDebug,
+} from './apiErrors';
+export {buildWiseMindDeepLink, normalizeBaseUrl, toQuery} from './apiUtils';
 
 export type WiseMindHealth = {
   ok?: boolean;
   service?: string;
   version?: string;
   appVersion?: string;
+  /** Answered only by the pre-v2 `/api/health` route, i.e. a desktop app older than 2.0. */
+  legacy?: boolean;
 };
 
-type AssistantStreamEvent = {
-  type?: 'delta' | 'final' | 'error' | 'done';
-  text?: string;
-  data?: unknown;
-  error?: string;
+export type KnowledgeDocumentCreateResponse = {
+  ok?: boolean;
+  id?: number | null;
+  created?: boolean;
+  skipped?: boolean;
+  message?: string;
 };
 
-type AssistantStreamCallbacks<T = any> = {
-  onDelta?: (text: string) => void;
-  onFinal?: (data: T) => void;
-  onEvent?: (event: AssistantStreamEvent) => void;
-};
+const CAPABILITIES_TTL_MS = 60 * 1000;
+const SYNC_TIMEOUT_MS = 60 * 1000;
 
-export class WiseMindApiError extends Error {
-  status?: number;
-  details?: WiseMindApiRequestDebug;
-
-  constructor(message: string, status?: number, details?: WiseMindApiRequestDebug) {
-    super(message);
-    this.name = 'WiseMindApiError';
-    this.status = status;
-    this.details = details;
-  }
-}
-
-export type WiseMindApiRequestDebug = {
-  method: string;
-  url: string;
-  path: string;
-  timeoutMs: number;
-  requestBody?: unknown;
-  status?: number;
-  responseBody?: unknown;
-  error?: string;
-};
-
-export class WiseMindApiClient {
-  private baseUrl: string;
-  private fetchImpl: FetchLike;
-  private timeoutMs: number;
-  private language: () => WiseMindLanguageSetting | undefined;
-
-  constructor(
-    baseUrl: string,
-    fetchImpl: FetchLike = fetch.bind(globalThis),
-    timeoutMs = 10000,
-    language: () => WiseMindLanguageSetting | undefined = () => undefined,
-  ) {
-    this.baseUrl = normalizeBaseUrl(baseUrl);
-    this.fetchImpl = fetchImpl;
-    this.timeoutMs = timeoutMs;
-    this.language = language;
-  }
-
-  private t(key: string, params?: Record<string, unknown>) {
-    return translate(this.language(), key, params);
-  }
+export class WiseMindApiClient extends WiseMindHttpClient {
+  private capabilitiesCache: {at: number; value: WiseMindCapabilities} | null = null;
+  private capabilitiesRequest: Promise<WiseMindCapabilities> | null = null;
 
   async health(): Promise<WiseMindHealth> {
-    return this.request('/api/v2/health');
+    try {
+      return await this.request('/api/v2/health');
+    } catch (error) {
+      if (!(error instanceof WiseMindApiError) || error.code !== 'NOT_FOUND') throw error;
+      const legacy = (await this.request('/api/health')) as WiseMindHealth;
+      return {...legacy, legacy: true};
+    }
+  }
+
+  /** Cached for a minute; concurrent callers share one request. Old clients without the endpoint resolve to {}. */
+  async getCapabilities(options: {force?: boolean} = {}): Promise<WiseMindCapabilities> {
+    const cache = this.capabilitiesCache;
+    if (!options.force && cache && Date.now() - cache.at < CAPABILITIES_TTL_MS) return cache.value;
+    if (this.capabilitiesRequest) return this.capabilitiesRequest;
+    const request = this.request('/api/capabilities', {}, {showConnectionDialog: false})
+      .then(response => {
+        const value = ((response as {data?: WiseMindCapabilities})?.data || {}) as WiseMindCapabilities;
+        this.capabilitiesCache = {at: Date.now(), value};
+        return value;
+      })
+      .catch(error => {
+        if (error instanceof WiseMindApiError && (error.code === 'NOT_FOUND' || error.code === 'UNSUPPORTED')) {
+          const value: WiseMindCapabilities = {features: []};
+          this.capabilitiesCache = {at: Date.now(), value};
+          return value;
+        }
+        throw error;
+      })
+      .finally(() => {
+        this.capabilitiesRequest = null;
+      });
+    this.capabilitiesRequest = request;
+    return request;
+  }
+
+  clearCapabilitiesCache() {
+    this.capabilitiesCache = null;
   }
 
   async getWorkspaceState() {
-    return this.getData<WiseMindWorkspaceState>('/api/v2/workspace/state');
+    return this.getData<WiseMindWorkspaceState>('/api/v2/workspace/state', {showConnectionDialog: false});
   }
 
-  async search(q: string, types?: string[]) {
+  async getAccountUsage() {
+    return this.getData<WiseMindAccountUsage>('/api/v2/account/usage', {showConnectionDialog: false});
+  }
+
+  async search(q: string, types?: string[], options: {mode?: 'semantic' | 'keyword'; limit?: number; signal?: AbortSignal} = {}) {
     const params = new URLSearchParams({q});
     if (types?.length) params.set('types', types.join(','));
-    return this.request(`/api/search?${params.toString()}`);
+    if (options.mode) params.set('mode', options.mode);
+    if (options.limit) params.set('limit', String(options.limit));
+    return this.request(`/api/search?${params.toString()}`, {}, {signal: options.signal, showConnectionDialog: false});
+  }
+
+  async upsertFile(payload: FileUpsertPayload, options: {signal?: AbortSignal} = {}) {
+    return this.postData<FileUpsertResult>('/api/v2/files/upsert', payload, {
+      timeoutMs: SYNC_TIMEOUT_MS,
+      signal: options.signal,
+      showConnectionDialog: false,
+    });
+  }
+
+  /**
+   * Updates a synced file by id. Upserting again would not find it: inside a learning space the desktop
+   * copies the note and stores the copy's path, so a lookup by the vault path creates a duplicate.
+   */
+  async updateSyncedFile(id: number, payload: Omit<FileUpsertPayload, 'knowledgeBaseIds'>, options: {signal?: AbortSignal} = {}) {
+    await this.request(
+      `/api/v2/files/${encodeURIComponent(String(id))}`,
+      {method: 'PATCH', body: JSON.stringify(payload)},
+      {timeoutMs: SYNC_TIMEOUT_MS, requestBody: payload, signal: options.signal, showConnectionDialog: false},
+    );
+  }
+
+  /** Adds an existing file to a topic; topics that skip duplicates answer `skipped` instead of a second copy. */
+  async addFileToTopic(
+    payload: {knowledgeBaseId: number; sourceId: number; title: string; fileUrl: string; size?: number},
+    options: {signal?: AbortSignal} = {},
+  ): Promise<KnowledgeDocumentCreateResponse> {
+    const body = {...payload, type: 'file', fileType: 'md', fileExt: 'md'};
+    return this.request(
+      '/api/v2/knowledge-documents',
+      {method: 'POST', body: JSON.stringify(body)},
+      {timeoutMs: SYNC_TIMEOUT_MS, requestBody: body, signal: options.signal, showConnectionDialog: false},
+    );
+  }
+
+  async getFile(id: number | string, options: {signal?: AbortSignal} = {}) {
+    return this.getData<Record<string, any> | null>(`/api/v2/files/${encodeURIComponent(String(id))}`, {
+      signal: options.signal,
+      showConnectionDialog: false,
+    });
+  }
+
+  async planAssistantTask(
+    payload: {instruction: string; notes: Array<{path: string; title: string; content?: string}>},
+    options: {signal?: AbortSignal} = {},
+  ) {
+    return this.postData<AssistantTaskPlan>('/api/v2/assistant/tasks/plan', payload, {
+      timeoutMs: 120000,
+      signal: options.signal,
+    });
+  }
+
+  async createQuiz(payload: {content?: string; fileId?: number | string; title?: string}, options: {signal?: AbortSignal} = {}) {
+    return this.postData<{paperId: number | string}>('/api/v2/assistant/quiz', payload, {
+      timeoutMs: 180000,
+      signal: options.signal,
+    });
+  }
+
+  /** Opens a desktop settings page, e.g. `model` for connecting an AI model. */
+  async openClientSetting(settingType: string) {
+    return this.openSource({type: 'setting', settingType});
   }
 
   async openSource(payload: Record<string, unknown>) {
@@ -206,8 +285,9 @@ export class WiseMindApiClient {
   async rewriteText(
     payload: {
       text: string;
-      action: 'rewrite' | 'expand' | 'shorten' | 'polish' | 'tags';
+      action: 'rewrite' | 'expand' | 'shorten' | 'polish' | 'tags' | 'translate';
       language?: string;
+      instruction?: string;
     },
     options: {signal?: AbortSignal} = {},
   ) {
@@ -303,7 +383,9 @@ export class WiseMindApiClient {
     return this.getData<any>(`/api/v2/knowledge-documents/${encodeURIComponent(String(id))}`);
   }
 
-  async createKnowledgeDocument(payload: Record<string, unknown>) {
+  async createKnowledgeDocument(
+    payload: Record<string, unknown>,
+  ): Promise<KnowledgeDocumentCreateResponse> {
     return this.request('/api/v2/knowledge-documents', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -343,6 +425,36 @@ export class WiseMindApiClient {
 
   async createCardsBatch(payload: Record<string, unknown>) {
     return this.postData('/api/v2/cards/batch', payload);
+  }
+
+  async listCardsBySource(sourcePath: string, limit = 200) {
+    return this.getData<WiseMindCardSummary[]>(`/api/v2/cards${toQuery({sourcePath, limit})}`, {
+      showConnectionDialog: false,
+    });
+  }
+
+  async getDueCards(params: {deckId?: number; sourcePath?: string; includeNew?: boolean; limit?: number} = {}) {
+    return this.getData<ReviewDueResult>(`/api/v2/card-review/due${toQuery(params)}`, {
+      showConnectionDialog: false,
+    });
+  }
+
+  async submitCardReview(payload: {
+    duration: number;
+    items: Array<{cardId: number; grade: CardReviewGrade; duration?: number}>;
+  }) {
+    return this.postData<{recordIds: number[]; acceptedCount: number}>(
+      '/api/v2/card-review/sessions',
+      payload,
+    );
+  }
+
+  async renameCardSourcePath(from: string, to: string, prefix = false) {
+    return this.postData<{affected: number}>(
+      '/api/v2/cards/source-path/rename',
+      {from, to, prefix},
+      {showConnectionDialog: false},
+    );
   }
 
   async getTranscriptionStartOptions() {
@@ -403,7 +515,31 @@ export class WiseMindApiClient {
     return this.openSource({type: 'transcription', ...(recordId ? {id: recordId} : {})});
   }
 
-  async loadSnapshot(): Promise<WiseMindSnapshot> {
+  async loadSnapshot(options?: {
+    includeKnowledgeDocuments?: boolean;
+    /** Destination pickers only need folders / topics. */
+    destinationsOnly?: boolean;
+  }): Promise<WiseMindSnapshot> {
+    const destinationsOnly = Boolean(options?.destinationsOnly);
+    const includeKnowledgeDocuments =
+      !destinationsOnly && options?.includeKnowledgeDocuments !== false;
+
+    if (destinationsOnly) {
+      const [noteFolders, documentFolders, knowledgeBases] = await Promise.all([
+        this.listNoteFolders(),
+        this.listFileFolders(),
+        this.listKnowledgeBases(),
+      ]);
+      return {
+        notes: [],
+        noteFolders,
+        documents: [],
+        documentFolders,
+        knowledgeBases,
+        knowledgeDocuments: [],
+      };
+    }
+
     const [notes, noteFolders, documents, documentFolders, knowledgeBases] = await Promise.all([
       this.listNotes({includeFolders: true}),
       this.listNoteFolders(),
@@ -412,11 +548,15 @@ export class WiseMindApiClient {
       this.listKnowledgeBases(),
     ]);
 
-    const knowledgeDocumentsNested = await Promise.all(
-      knowledgeBases.map((base: any) =>
-        this.listKnowledgeDocuments(base.id, undefined, 5000).catch(() => []),
-      ),
-    );
+    const knowledgeDocuments = includeKnowledgeDocuments
+      ? (
+          await Promise.all(
+            knowledgeBases.map((base: any) =>
+              this.listKnowledgeDocuments(base.id, undefined, 5000).catch(() => []),
+            ),
+          )
+        ).flat()
+      : [];
 
     return {
       notes,
@@ -424,306 +564,7 @@ export class WiseMindApiClient {
       documents,
       documentFolders,
       knowledgeBases,
-      knowledgeDocuments: knowledgeDocumentsNested.flat(),
+      knowledgeDocuments,
     };
-  }
-
-  private async getData<T>(
-    path: string,
-    options: {signal?: AbortSignal; showConnectionDialog?: boolean} = {},
-  ): Promise<T> {
-    const response = await this.request(path, {}, {
-      signal: options.signal,
-      showConnectionDialog: options.showConnectionDialog,
-    });
-    return (response?.data ?? []) as T;
-  }
-
-  private async postData<T = any>(
-    path: string,
-    body: Record<string, unknown>,
-    options: {timeoutMs?: number; signal?: AbortSignal; showConnectionDialog?: boolean} = {},
-  ): Promise<T> {
-    const response = await this.request(
-      path,
-      {method: 'POST', body: JSON.stringify(body)},
-      {
-        timeoutMs: options.timeoutMs,
-        requestBody: body,
-        signal: options.signal,
-        showConnectionDialog: options.showConnectionDialog,
-      },
-    );
-    return (response?.data ?? response) as T;
-  }
-
-  private async postStream<T = any>(
-    path: string,
-    body: Record<string, unknown>,
-    callbacks: AssistantStreamCallbacks<T>,
-    options: {timeoutMs?: number; signal?: AbortSignal} = {},
-  ): Promise<T> {
-    const controller = new AbortController();
-    const timeoutMs = options.timeoutMs || this.timeoutMs;
-    const method = 'POST';
-    const url = `${this.baseUrl}${path}`;
-    const baseDebug: WiseMindApiRequestDebug = {
-      method,
-      url,
-      path,
-      timeoutMs,
-      requestBody: sanitizeRequestBody(body),
-    };
-    const abortFromExternalSignal = () => controller.abort();
-    if (options.signal?.aborted) {
-      controller.abort();
-    } else {
-      options.signal?.addEventListener('abort', abortFromExternalSignal, {once: true});
-    }
-    const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
-    let finalData: T | undefined;
-    try {
-      const response = await this.fetchImpl(url, {
-        method,
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        let parsed: any = {};
-        try {
-          parsed = text ? JSON.parse(text) : {};
-        } catch {
-          parsed = {error: text};
-        }
-        throw new WiseMindApiError(
-          parsed?.error || parsed?.message || this.t('apiErrors.requestFailed', {status: response.status}),
-          response.status,
-          {...baseDebug, status: response.status, responseBody: parsed},
-        );
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new WiseMindApiError(this.t('apiErrors.streamingUnsupported'), response.status, {
-          ...baseDebug,
-          status: response.status,
-        });
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-      while (true) {
-        const {done, value} = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, {stream: true});
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          const event = parseStreamLine(line);
-          if (!event) continue;
-          callbacks.onEvent?.(event);
-          if (event.type === 'delta' && event.text) {
-            callbacks.onDelta?.(event.text);
-          }
-          if (event.type === 'final') {
-            finalData = event.data as T;
-            callbacks.onFinal?.(finalData);
-          }
-          if (event.type === 'error') {
-            throw new WiseMindApiError(event.error || this.t('apiErrors.streamFailed'), response.status, {
-              ...baseDebug,
-              status: response.status,
-              responseBody: event,
-            });
-          }
-        }
-      }
-
-      if (buffer.trim()) {
-        const event = parseStreamLine(buffer);
-        if (event?.type === 'final') finalData = event.data as T;
-        if (event?.type === 'error') {
-          throw new WiseMindApiError(event.error || this.t('apiErrors.streamFailed'), response.status, {
-            ...baseDebug,
-            status: response.status,
-            responseBody: event,
-          });
-        }
-      }
-
-      if (finalData === undefined) {
-        throw new WiseMindApiError(this.t('apiErrors.noFinalResult'), response.status, {
-          ...baseDebug,
-          status: response.status,
-        });
-      }
-      return finalData;
-    } catch (error: any) {
-      if (error?.name === 'AbortError') {
-        if (!options.signal?.aborted) openWiseMindConnectionDialog();
-        throw new WiseMindApiError(options.signal?.aborted
-          ? this.t('apiErrors.aborted')
-          : this.t('apiErrors.timeout', {seconds: Math.round(timeoutMs / 1000)}), undefined, {
-          ...baseDebug,
-          error: options.signal?.aborted ? 'aborted' : 'timeout',
-        });
-      }
-      if (error instanceof WiseMindApiError) {
-        throw error;
-      }
-      openWiseMindConnectionDialog();
-      throw new WiseMindApiError(error?.message || this.t('apiErrors.connectFailed'), undefined, {
-        ...baseDebug,
-        error: error?.message || 'network error',
-      });
-    } finally {
-      options.signal?.removeEventListener('abort', abortFromExternalSignal);
-      globalThis.clearTimeout(timeout);
-    }
-  }
-
-  private async request(
-    path: string,
-    init: RequestInit = {},
-    options: {
-      timeoutMs?: number;
-      requestBody?: unknown;
-      signal?: AbortSignal;
-      showConnectionDialog?: boolean;
-    } = {},
-  ) {
-    const controller = new AbortController();
-    const timeoutMs = options.timeoutMs || this.timeoutMs;
-    const method = init.method || 'GET';
-    const url = `${this.baseUrl}${path}`;
-    const baseDebug: WiseMindApiRequestDebug = {
-      method,
-      url,
-      path,
-      timeoutMs,
-      requestBody: sanitizeRequestBody(options.requestBody),
-    };
-    const abortFromExternalSignal = () => controller.abort();
-    if (options.signal?.aborted) {
-      controller.abort();
-    } else {
-      options.signal?.addEventListener('abort', abortFromExternalSignal, {once: true});
-    }
-    const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await this.fetchImpl(url, {
-        ...init,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(init.headers || {}),
-        },
-        signal: controller.signal,
-      });
-
-      const text = await response.text();
-      let json: any = {};
-      if (text) {
-        try {
-          json = JSON.parse(text);
-        } catch {
-          throw new WiseMindApiError(this.t('apiErrors.invalidJson'), response.status, {
-            ...baseDebug,
-            status: response.status,
-            responseBody: text.slice(0, 1000),
-          });
-        }
-      }
-
-      if (!response.ok) {
-        throw new WiseMindApiError(
-          json?.error || json?.message || this.t('apiErrors.requestFailed', {status: response.status}),
-          response.status,
-          {
-            ...baseDebug,
-            status: response.status,
-            responseBody: json,
-          },
-        );
-      }
-
-      return json;
-    } catch (error: any) {
-      if (error?.name === 'AbortError') {
-        if (!options.signal?.aborted && options.showConnectionDialog !== false) {
-          openWiseMindConnectionDialog();
-        }
-        throw new WiseMindApiError(options.signal?.aborted
-          ? this.t('apiErrors.aborted')
-          : this.t('apiErrors.timeout', {seconds: Math.round(timeoutMs / 1000)}), undefined, {
-          ...baseDebug,
-          error: options.signal?.aborted ? 'aborted' : 'timeout',
-        });
-      }
-      if (error instanceof WiseMindApiError) {
-        throw error;
-      }
-      if (options.showConnectionDialog !== false) openWiseMindConnectionDialog();
-      throw new WiseMindApiError(error?.message || this.t('apiErrors.connectFailed'), undefined, {
-        ...baseDebug,
-        error: error?.message || 'network error',
-      });
-    } finally {
-      options.signal?.removeEventListener('abort', abortFromExternalSignal);
-      globalThis.clearTimeout(timeout);
-    }
   }
 }
-
-export const buildWiseMindDeepLink = (payload: Record<string, unknown>) => {
-  const url = new URL('wisemindai://open');
-  Object.entries(payload).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === '') return;
-    url.searchParams.set(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
-  });
-  return url.toString();
-};
-
-export const normalizeBaseUrl = (value: string) => {
-  const trimmed = (value || 'http://127.0.0.1:38221').trim();
-  return trimmed.replace(/\/+$/, '');
-};
-
-export const toQuery = (params: Record<string, string | number | boolean | undefined | null>) => {
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
-      query.set(key, String(value));
-    }
-  });
-  const text = query.toString();
-  return text ? `?${text}` : '';
-};
-
-const normalizeNullable = (value?: string | number | null) => {
-  if (value === undefined || value === null || value === '') return null;
-  return String(value);
-};
-
-const parseStreamLine = (line: string): AssistantStreamEvent | null => {
-  const trimmed = line.trim();
-  if (!trimmed) return null;
-  try {
-    return JSON.parse(trimmed) as AssistantStreamEvent;
-  } catch {
-    return null;
-  }
-};
-
-const sanitizeRequestBody = (value: unknown) => {
-  if (!value || typeof value !== 'object') return value;
-  const body = {...value as Record<string, unknown>};
-  if (typeof body.content === 'string') {
-    body.contentLength = body.content.length;
-    body.contentPreview = body.content.slice(0, 300);
-    delete body.content;
-  }
-  return body;
-};

@@ -1,0 +1,1389 @@
+// P-page styles for transcription. Built on tokens and classes in ../v2.scss.
+
+@keyframes wm2-rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgb(255 98 125 / 45%);
+  }
+
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 5px rgb(255 98 125 / 0%);
+  }
+}
+
+@keyframes wm2-rec-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+// Page shell: scrollable body + fixed footer. Horizontal margins cancel .wm2-main padding
+// so the footer spans the pane. Bottom padding stays clear of Obsidian's floating status bar.
+.wm2-rec {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  margin: 0 -16px 0;
+  padding-bottom: 16px;
+}
+
+.wm2-rec-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 16px 16px;
+  font-size: 12px;
+}
+
+.wm2-rec-footer {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  border-top: 1px solid var(--wm2-line);
+  padding: 10px 16px;
+
+  &.is-compact {
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 10px 12px;
+  }
+}
+
+// Narrow sidebars: mark buttons collapse to icons (label stays for screen readers and the tooltip).
+@container (max-width: 340px) {
+  .wm2-rec-footer.is-compact .wm2-rec-mark-btn {
+    padding: 0 8px;
+
+    > .wm2-truncate {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+}
+
+.wm2-rec-spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.wm2-rec-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  color: var(--wm2-faint);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+
+  .wm-icon {
+    flex: none;
+    width: 12px;
+    height: 12px;
+  }
+}
+
+.wm2-rec-error-text {
+  margin: 0;
+  color: var(--wm2-error);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.wm2-rec-spinner-lg {
+  width: 24px;
+  height: 24px;
+  border-width: 3px;
+}
+
+.wm2-rec-result-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--wm2-soft);
+  color: var(--wm2-muted);
+
+  .wm-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  &.is-success {
+    background: var(--wm2-success-soft);
+    color: var(--wm2-success);
+  }
+
+  &.is-warning {
+    background: var(--wm2-warning-soft);
+    color: var(--wm2-warning);
+  }
+
+  &.is-error {
+    background: var(--wm2-error-soft);
+    color: var(--wm2-error);
+  }
+}
+
+.wm2-rec button.wm2-btn.is-primary .wm2-spinner {
+  border-color: color-mix(in srgb, var(--text-on-accent) 40%, transparent);
+  border-top-color: var(--text-on-accent);
+}
+
+.wm2-rec .wm2-chip.is-error {
+  background: var(--wm2-error-soft);
+  color: var(--wm2-error);
+}
+
+// Same pill as the panel header tabs, sized to the labels instead of a five-column grid.
+.wm2-rec-scenes {
+  align-self: flex-start;
+  flex: none;
+  width: max-content;
+  max-width: 100%;
+}
+
+.wm2-rec-settings {
+  flex: none;
+
+  li {
+    min-height: 42px;
+  }
+
+  .wm2-list-main {
+    font-size: 12px;
+  }
+
+  .wm2-switch {
+    flex: none;
+  }
+}
+
+// Toggle rows: the label is clickable (it targets the switch) and carries a one-line description.
+.wm2-rec-toggle-label {
+  cursor: pointer;
+}
+
+.wm2-rec-settings li.wm2-rec-toggle-row {
+  transition: background-color 0.15s ease;
+
+  &:hover:not(.is-disabled) {
+    background: var(--wm2-soft);
+  }
+
+  &.is-disabled .wm2-rec-toggle-label {
+    cursor: not-allowed;
+  }
+
+  .wm2-list-main {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+}
+
+.wm2-rec-row-desc {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wm2-faint);
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &.is-warning {
+    color: var(--wm2-warning);
+    white-space: normal;
+  }
+}
+
+.wm2-rec-row-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--wm2-faint);
+}
+
+span.wm2-rec-row-icon {
+  display: inline-block;
+}
+
+.wisemindai-obsidian-root input.wm2-rec-title-input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-normal);
+  font-size: 12px;
+  box-shadow: none;
+
+  &:focus,
+  &:focus-visible {
+    border: 0;
+    box-shadow: none;
+  }
+
+  &::placeholder {
+    color: var(--wm2-faint);
+  }
+}
+
+// Inline value selects: borderless right-aligned value with a chevron, like the prototype's row values.
+.wm2-rec-row-select {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 60%;
+
+  &.is-grow {
+    flex: 1;
+    max-width: none;
+  }
+
+  button.wm2-select-trigger {
+    justify-content: flex-end;
+    gap: 4px;
+    width: 100%;
+    min-height: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: 999px;
+    padding: 0 8px;
+    background: transparent;
+    color: var(--wm2-muted);
+    font-size: 12px;
+    box-shadow: none;
+    transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+
+    > span {
+      flex: 0 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .wm-icon {
+      flex: none;
+      width: 12px;
+      height: 12px;
+    }
+
+    &:hover,
+    &[data-state='open'] {
+      background: var(--wm2-soft);
+      color: var(--text-normal);
+    }
+
+    &[data-state='open'] {
+      box-shadow: 0 0 0 2px var(--wm2-brand-soft);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--wm2-brand) 45%, transparent);
+    }
+  }
+
+  &.is-grow button.wm2-select-trigger {
+    justify-content: space-between;
+    padding-left: 6px;
+    color: var(--text-normal);
+
+    > span {
+      flex: 1;
+      text-align: left;
+    }
+  }
+}
+
+.wm2-rec-meter {
+  display: inline-flex;
+  flex: none;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+
+  span {
+    width: 2px;
+    border-radius: 1px;
+    background: var(--wm2-line);
+    transition: background-color 0.1s ease;
+
+    &:nth-child(1) {
+      height: 4px;
+    }
+
+    &:nth-child(2) {
+      height: 8px;
+    }
+
+    &:nth-child(3) {
+      height: 12px;
+    }
+
+    &:nth-child(4) {
+      height: 6px;
+    }
+
+    &.is-lit {
+      background: var(--wm2-success);
+    }
+  }
+}
+
+.wm2-rec-meter.is-live span.is-lit {
+  transition-duration: 0.05s;
+}
+
+.wm2-rec-settings li.wm2-rec-test-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  background: var(--wm2-soft);
+
+  &.is-error {
+    background: var(--wm2-error-soft);
+  }
+}
+
+.wm2-rec-test-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+
+  > .wm2-rec-dot {
+    width: 8px;
+    height: 8px;
+  }
+
+  > p {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.wm2-rec-error-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--wm2-error);
+}
+
+// Live input level during the five-second microphone test.
+.wm2-rec-level {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 8px;
+
+  span {
+    flex: 1;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--wm2-line);
+    transition: background-color 0.06s linear;
+
+    &.is-lit {
+      background: var(--wm2-success);
+    }
+
+    &.is-lit:nth-child(n + 13) {
+      background: var(--wm2-warning);
+    }
+  }
+}
+
+@keyframes wm2-rec-test-progress {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.wm2-rec-test-progress {
+  display: block;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--wm2-line);
+
+  span {
+    display: block;
+    height: 100%;
+    background: var(--wm2-brand);
+    transform-origin: left center;
+    animation: wm2-rec-test-progress 5s linear forwards;
+  }
+}
+
+.wm2-rec-test-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: var(--wm2-success);
+  font-size: 11px;
+  line-height: 1.5;
+
+  .wm-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+  }
+}
+
+.wisemindai-obsidian-root button.wm2-rec-test-stop {
+  color: var(--wm2-error);
+}
+
+.wm2-rec-test-audio {
+  width: 100%;
+  height: 32px;
+}
+
+.wm2-rec-blocked {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  border-radius: var(--wm2-radius-row);
+  padding: 8px 10px;
+  background: var(--wm2-warning-soft);
+  color: var(--wm2-warning);
+  font-size: 11px;
+  line-height: 1.5;
+
+  .wm-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+  }
+}
+
+.wm2-rec-live {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: 16px;
+  padding: 12px;
+  background: var(--wm2-soft);
+
+  &.is-on {
+    background: var(--wm2-brand-soft);
+  }
+}
+
+.wm2-rec-live {
+  transition: background-color 0.2s ease;
+}
+
+.wm2-rec-live-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  label {
+    min-width: 0;
+    font-size: 12px;
+    font-weight: var(--font-medium);
+  }
+}
+
+.wm2-rec-live-desc {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding-left: 54px;
+  color: var(--wm2-muted);
+  font-size: 11px;
+  line-height: 1.5;
+
+  .wm-icon {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    color: var(--wm2-brand-text);
+  }
+}
+
+// ---------- Recording ----------
+.wm2-rec-livebar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--wm2-line);
+  padding: 4px 16px 12px;
+
+  // Status chips shrink and truncate so a 300px sidebar never overflows.
+  > .wm2-chip {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 50%;
+  }
+}
+
+.wm2-rec-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--wm2-error);
+  animation: wm2-rec-pulse 1.4s ease-in-out infinite;
+
+  &.is-paused {
+    background: var(--wm2-warning);
+    animation: none;
+  }
+
+  &.is-idle {
+    background: var(--wm2-faint);
+    animation: none;
+  }
+}
+
+.wm2-rec-timer {
+  flex: none;
+  font-family: var(--font-monospace);
+  font-size: 18px;
+  font-weight: var(--font-semibold);
+  line-height: 1;
+  transition: color 0.2s ease, opacity 0.2s ease;
+}
+
+@keyframes wm2-rec-paused-blink {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.wm2-rec-livebar {
+  > .wm2-chip .wm2-spinner {
+    width: 10px;
+    height: 10px;
+  }
+
+  &.is-paused {
+    .wm2-rec-timer {
+      color: var(--wm2-warning);
+      animation: wm2-rec-paused-blink 1.6s ease-in-out infinite;
+    }
+
+    .wm2-rec-wave span {
+      opacity: 0.5;
+    }
+  }
+
+  &.is-stopping .wm2-rec-timer {
+    color: var(--wm2-muted);
+  }
+}
+
+// Connected is the normal case, so it stays a quiet dot; other states become a labelled chip.
+.wm2-rec-conn {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--wm2-success);
+  box-shadow: 0 0 0 3px var(--wm2-success-soft);
+}
+
+.wm2-rec-livebar > .wm2-rec-conn-chip {
+  .wm-icon {
+    flex: none;
+  }
+}
+
+.wm2-rec-stream-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wisemindai-obsidian-root button.wm2-rec-jump {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 32px);
+  height: 26px;
+  border: 1px solid var(--wm2-card-border);
+  border-radius: 999px;
+  padding: 0 10px;
+  overflow: hidden;
+  background: var(--wm2-surface);
+  color: var(--wm2-brand-text);
+  font-size: 11px;
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+  box-shadow: var(--wm2-float-shadow);
+  cursor: pointer;
+  transform: translateX(-50%);
+  transition: bottom 0.15s ease, background-color 0.15s ease;
+
+  .wm-icon {
+    flex: none;
+    width: 12px;
+    height: 12px;
+  }
+
+  &:hover {
+    background: color-mix(in srgb, var(--wm2-surface) 90%, var(--wm2-brand) 10%);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--wm2-float-shadow), 0 0 0 2px color-mix(in srgb, var(--wm2-brand) 55%, transparent);
+  }
+
+  &.is-raised {
+    bottom: 52px;
+  }
+}
+
+.wm2-rec-pop-enter-active,
+.wm2-rec-pop-leave-active {
+  transition: opacity 0.15s ease, translate 0.15s ease;
+}
+
+.wm2-rec-pop-enter-from,
+.wm2-rec-pop-leave-to {
+  opacity: 0;
+  translate: 0 6px;
+}
+
+.wm2-rec-wave {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 2px;
+  min-width: 24px;
+  height: 20px;
+  overflow: hidden;
+
+  span {
+    flex: none;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--wm2-line);
+    transition: background-color 0.1s ease;
+
+    &:nth-child(8n + 1) {
+      height: 8px;
+    }
+
+    &:nth-child(8n + 2) {
+      height: 16px;
+    }
+
+    &:nth-child(8n + 3) {
+      height: 12px;
+    }
+
+    &:nth-child(8n + 4) {
+      height: 20px;
+    }
+
+    &:nth-child(8n + 5) {
+      height: 8px;
+    }
+
+    &:nth-child(8n + 6) {
+      height: 16px;
+    }
+
+    &:nth-child(8n + 7) {
+      height: 4px;
+    }
+
+    &:nth-child(8n) {
+      height: 12px;
+    }
+
+    &.is-lit {
+      background: color-mix(in srgb, var(--wm2-error) 75%, transparent);
+    }
+  }
+}
+
+.wm2-rec-stream {
+  gap: 12px;
+  font-size: 12.5px;
+}
+
+.wm2-rec-seg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
+
+  p {
+    margin: 0;
+    line-height: 1.75;
+    overflow-wrap: anywhere;
+  }
+
+  p.is-highlight {
+    border-radius: 8px;
+    padding: 0 4px;
+    background: var(--wm2-warning-soft);
+  }
+
+  &.is-partial p {
+    color: var(--wm2-muted);
+  }
+}
+
+.wm2-rec-seg-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  time {
+    color: var(--wm2-faint);
+    font-size: 11px;
+  }
+}
+
+.wm2-rec-mark {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  margin-left: 4px;
+  border-radius: 999px;
+  padding: 0 6px;
+  background: var(--wm2-warning);
+  color: var(--text-on-accent);
+  font-size: 10px;
+  vertical-align: 1px;
+}
+
+.wm2-rec-caret {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 2px;
+  border-radius: 1px;
+  background: var(--wm2-brand);
+  vertical-align: -2px;
+  animation: wm2-rec-blink 1s step-end infinite;
+}
+
+.wm2-rec-writing {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  border-radius: var(--wm2-radius-row);
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--wm2-surface) 88%, var(--wm2-brand) 12%);
+  color: var(--wm2-brand-text);
+  font-size: 11px;
+
+  > .wm-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+  }
+
+  > span {
+    flex: 1;
+  }
+
+  &.is-error {
+    background: color-mix(in srgb, var(--wm2-surface) 88%, var(--wm2-error) 12%);
+    color: var(--wm2-error);
+  }
+
+  .wm2-link-button {
+    flex: none;
+    font-size: 11px;
+  }
+}
+
+.wm2-rec-status-line {
+  flex: none;
+  padding: 0 16px 8px;
+
+  .wm2-rec-note .wm2-spinner {
+    width: 10px;
+    height: 10px;
+  }
+}
+
+.wm2-rec-error-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  border-radius: var(--wm2-radius-row);
+  padding: 6px 10px;
+  background: var(--wm2-error-soft);
+  font-size: 11px;
+
+  .wm-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin-top: 1px;
+  }
+
+  span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.wm2-rec-error-desc {
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}
+
+// Mark buttons flash a check and success label in place for ~1.5s after a mark is stored.
+.wisemindai-obsidian-root button.wm2-btn.wm2-rec-mark-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  &.is-done {
+    background: var(--wm2-success-soft);
+    color: var(--wm2-success);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--wm2-success) 30%, transparent);
+  }
+}
+
+.wisemindai-obsidian-root button.wm2-btn.is-done .wm-icon,
+.wisemindai-obsidian-root button.wm2-btn.wm2-rec-copy.is-done {
+  color: var(--wm2-success);
+}
+
+@keyframes wm2-rec-resume-ring {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(0 193 106 / 35%);
+  }
+
+  50% {
+    box-shadow: 0 0 0 4px rgb(0 193 106 / 0%);
+  }
+}
+
+.wisemindai-obsidian-root button.wm2-icon-btn.wm2-rec-pause {
+  transition: background-color 0.15s ease, color 0.15s ease;
+
+  &.is-resume {
+    background: var(--wm2-brand-soft);
+    color: var(--wm2-brand-text);
+    animation: wm2-rec-resume-ring 1.8s ease-in-out infinite;
+
+    &:hover {
+      background: color-mix(in srgb, var(--wm2-brand) 18%, transparent);
+    }
+  }
+}
+
+.wm2-rec button.wm2-icon-btn,
+.wm2-rec button.wm2-btn,
+.wm2-rec button.wm2-action,
+.wm2-rec button.wm2-rec-stop,
+.wm2-rec .wm2-segmented button,
+.wm2-rec button.wm2-tab,
+.wm2-rec button.wm2-chip {
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--wm2-brand) 55%, transparent);
+  }
+}
+
+.wisemindai-obsidian-root button.wm2-rec-stop {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 12px;
+  background: var(--wm2-error);
+  color: var(--text-on-accent);
+  font-size: 12px;
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+  box-shadow: 0 6px 16px -6px rgb(240 80 110 / 60%);
+  cursor: pointer;
+  transition: filter 0.15s ease;
+
+  .wm-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .wm2-spinner {
+    border-color: color-mix(in srgb, var(--text-on-accent) 40%, transparent);
+    border-top-color: var(--text-on-accent);
+  }
+
+  &:hover {
+    filter: brightness(1.06);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+// ---------- Completed ----------
+.wm2-rec-done-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 4px;
+  text-align: center;
+
+  strong {
+    font-size: 13px;
+    font-weight: var(--font-semibold);
+  }
+}
+
+.wm2-rec-done-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+
+  .wm2-segmented {
+    max-width: 100%;
+  }
+
+  .wm2-segmented button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+
+    .wm-icon {
+      flex: none;
+      width: 12px;
+      height: 12px;
+      color: var(--wm2-brand-text);
+    }
+
+    .wm2-spinner {
+      width: 10px;
+      height: 10px;
+    }
+  }
+}
+
+.wm2-rec-speaker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wisemindai-obsidian-root button.wm2-chip.wm2-rec-speaker-chip {
+  max-width: 100%;
+  transition: box-shadow 0.15s ease, opacity 0.15s ease, filter 0.15s ease;
+
+  .wm-icon {
+    flex: none;
+    width: 10px;
+    height: 10px;
+  }
+
+  &.is-selected {
+    box-shadow: 0 0 0 1px currentcolor;
+    font-weight: var(--font-medium);
+  }
+}
+
+.wm2-rec-speaker-chips:has(.is-selected) button.wm2-rec-speaker-chip:not(.is-selected) {
+  opacity: 0.6;
+
+  &:hover {
+    opacity: 1;
+  }
+}
+
+.wm2-rec-speaker-count {
+  flex: none;
+  opacity: 0.7;
+}
+
+.wm2-rec-swap-enter-active,
+.wm2-rec-swap-leave-active {
+  transition: opacity 0.14s ease, translate 0.14s ease;
+}
+
+.wm2-rec-swap-enter-from {
+  opacity: 0;
+  translate: 0 4px;
+}
+
+.wm2-rec-swap-leave-to {
+  opacity: 0;
+  translate: 0 -2px;
+}
+
+@keyframes wm2-rec-shimmer {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.wm2-rec-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 260px;
+
+  span {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--wm2-line);
+    animation: wm2-rec-shimmer 1.2s ease-in-out infinite;
+
+    &:nth-child(2) {
+      width: 85%;
+      animation-delay: 0.15s;
+    }
+
+    &:nth-child(3) {
+      width: 60%;
+      animation-delay: 0.3s;
+    }
+  }
+}
+
+.wm2-rec-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  font-size: 12.5px;
+}
+
+.wisemindai-obsidian-root select.wm2-rec-speaker-select {
+  height: 20px;
+  max-width: 140px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 8px;
+  background: var(--wm2-soft);
+  color: var(--wm2-muted);
+  font-size: 11px;
+  box-shadow: none;
+  cursor: pointer;
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover:not(:disabled) {
+    filter: brightness(0.96);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, currentcolor 45%, transparent);
+  }
+
+  &.is-info {
+    background: var(--wm2-info-soft);
+    color: var(--wm2-info);
+  }
+
+  &.is-secondary {
+    background: var(--wm2-secondary-soft);
+    color: var(--wm2-secondary);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+.wm2-rec-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  line-height: 1.6;
+}
+
+.wm2-rec-summary-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  h5 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: var(--font-medium);
+  }
+
+  .wm-markdown {
+    color: color-mix(in srgb, var(--text-normal) 75%, transparent);
+    font-size: 12px;
+  }
+}
+
+.wm2-rec-actions {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+
+  button.wm2-action {
+    height: 30px;
+    padding: 0 10px;
+    font-size: 12px;
+    transition: box-shadow 0.15s ease, transform 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+
+    span {
+      min-width: 0;
+      white-space: nowrap;
+    }
+
+    .wm2-spinner {
+      width: 14px;
+      height: 14px;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: var(--wm2-btn-shadow);
+    }
+
+    &.is-done {
+      background: var(--wm2-success-soft);
+      color: var(--wm2-success);
+
+      .wm-icon {
+        color: var(--wm2-success);
+      }
+    }
+
+    &.is-done:disabled {
+      opacity: 1;
+      box-shadow: none;
+    }
+  }
+}
+
+@container (max-width: 300px) {
+  .wm2-rec-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+// ---------- Dialogs ----------
+.wm2-dialog.wm2-rec-dialog {
+  width: min(600px, calc(100% - 24px));
+  max-height: min(700px, calc(100% - 24px));
+  border-radius: var(--wm2-radius-card);
+  box-shadow: var(--wm2-float-shadow);
+}
+
+.wm2-rec-dialog-list {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: min(460px, 58vh);
+  overflow: auto;
+}
+
+.wm2-rec-speaker-row {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.wm2-rec-field {
+  display: flex;
+  flex: 1 1 160px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+
+  > span,
+  > small {
+    color: var(--wm2-muted);
+    font-size: 11px;
+  }
+}
+
+.wisemindai-obsidian-root .wm2-rec-input {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--wm2-line);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: var(--wm2-surface);
+  color: var(--text-normal);
+  font-size: 12px;
+  box-shadow: none;
+
+  &:focus,
+  &:focus-visible {
+    border-color: var(--wm2-brand);
+    box-shadow: 0 0 0 2px var(--wm2-brand-soft);
+  }
+}
+
+.wm2-list-card li.wm2-rec-history-row {
+  padding: 0;
+}
+
+.wisemindai-obsidian-root button.wm2-rec-history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  justify-content: flex-start;
+  min-width: 0;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+
+  .wm2-list-main {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  > .wm2-chip {
+    flex: none;
+  }
+
+  &:hover:not(:disabled) {
+    background: var(--wm2-soft);
+
+    .wm2-rec-chevron {
+      color: var(--text-normal);
+      translate: 2px 0;
+    }
+  }
+
+  &:active:not(:disabled) {
+    background: color-mix(in srgb, var(--text-normal) 7%, transparent);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--wm2-brand) 55%, transparent);
+  }
+
+  &.is-current {
+    background: var(--wm2-brand-soft);
+
+    .wm2-tile {
+      color: var(--wm2-brand-text);
+    }
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.wm2-rec-chevron {
+  flex: none;
+  color: var(--wm2-faint);
+  transition: color 0.15s ease, translate 0.15s ease;
+}
+
+.wm2-rec-history-empty .wm2-tile {
+  width: 36px;
+  height: 36px;
+}
+
+// ---------- Reduced motion ----------
+@media (prefers-reduced-motion: reduce) {
+  .wm2-rec {
+    .wm2-rec-dot,
+    .wm2-rec-caret,
+    .wm2-rec-skeleton span,
+    .wm2-rec-livebar.is-paused .wm2-rec-timer,
+    button.wm2-icon-btn.wm2-rec-pause.is-resume {
+      animation: none;
+    }
+
+    .wm2-rec-test-progress span {
+      animation: none;
+      transform: none;
+    }
+
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  .wm2-rec-swap-enter-active,
+  .wm2-rec-swap-leave-active,
+  .wm2-rec-pop-enter-active,
+  .wm2-rec-pop-leave-active,
+  .wisemindai-obsidian-root button.wm2-rec-history-item,
+  .wm2-rec-chevron {
+    transition: none;
+  }
+}

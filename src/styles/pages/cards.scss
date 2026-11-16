@@ -1,0 +1,545 @@
+// P-page styles for cards. Built on tokens and classes in ../v2.scss.
+
+.wm2-cards {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.wm2-cards-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding-bottom: 12px;
+}
+
+// ---------- Source bar ----------
+.wm2-card.wm2-cards-source {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.wm2-cards-source-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+
+  .wm-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+  }
+
+  strong {
+    color: var(--text-normal);
+    font-weight: var(--font-medium);
+  }
+}
+
+// ---------- Result card ----------
+.wm2-card.wm2-cards-result {
+  padding: 0;
+  overflow: hidden;
+}
+
+.wm2-cards-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  border-bottom: 1px solid var(--wm2-line);
+  padding: 0 12px;
+
+  strong {
+    font-weight: var(--font-medium);
+  }
+}
+
+.wm2-cards-head-icon {
+  flex: none;
+  color: var(--wm2-secondary);
+}
+
+.wm2-cards-head-meta {
+  flex: none;
+  color: var(--wm2-faint);
+  font-size: 11px;
+}
+
+.wisemindai-obsidian-root button.wm2-btn.is-ghost.wm2-cards-head-meta {
+  height: 22px;
+  margin-left: auto;
+  padding: 0 8px;
+  color: var(--wm2-muted);
+  font-size: 11px;
+}
+
+.wm2-cards-params {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--wm2-line);
+  padding: 8px 12px;
+}
+
+button.wm2-btn.wm2-cards-pill {
+  max-width: 100%;
+
+  > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.wm2-cards-caret {
+  flex: none;
+  opacity: 0.5;
+}
+
+button.wm2-btn.wm2-cards-regenerate,
+.wm2-disabled-tip.wm2-cards-regenerate {
+  margin-left: auto;
+}
+
+.wm2-cards-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 12px 0;
+  border-radius: var(--wm2-radius-row);
+  padding: 6px 6px 6px 10px;
+  background: var(--wm2-error-soft);
+  color: var(--wm2-error);
+  font-size: 12px;
+  word-break: break-word;
+  animation: wm2-assist-fade 0.18s ease-out;
+
+  > span {
+    flex: 1;
+    min-width: 0;
+  }
+
+  > button.wm2-btn.is-ghost {
+    color: var(--wm2-error);
+  }
+}
+
+.wm2-cards-progress-count {
+  flex: none;
+  color: var(--wm2-faint);
+  font-size: 11px;
+}
+
+.wm2-cards-row.wm2-cards-skeleton {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.wm2-cards-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  color: var(--wm2-muted);
+  font-size: 12px;
+
+  > .wm2-truncate {
+    flex: 1;
+  }
+
+  & + .wm2-cards-list {
+    border-top: 1px solid var(--wm2-line);
+  }
+}
+
+.wm2-cards-stream {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0 12px 12px;
+  border-radius: var(--wm2-radius-row);
+  padding: 10px 12px;
+  background: var(--wm2-soft);
+  font-size: 12px;
+}
+
+.wm2-cards-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wm2-cards-row {
+  & + & {
+    border-top: 1px solid var(--wm2-line);
+  }
+
+  &.is-off .wm2-cards-row-head {
+    opacity: 0.5;
+  }
+
+  &.is-editing {
+    background: var(--wm2-soft);
+  }
+}
+
+.wm2-cards-row-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+
+  > .wm2-chip {
+    margin-top: 1px;
+  }
+
+  &:hover {
+    background: var(--wm2-soft);
+  }
+
+  .wm2-cards-row.is-editing > & {
+    background: transparent;
+  }
+}
+
+.wisemindai-obsidian-root input[type="checkbox"].wm2-cards-check {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 2px 0 0;
+  accent-color: var(--wm2-brand);
+  cursor: pointer;
+}
+
+button.wm2-plain-button.wm2-cards-row-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  border-radius: 6px;
+  text-align: left;
+  white-space: normal;
+
+  strong {
+    font-weight: var(--font-medium);
+    line-height: 1.45;
+    word-break: break-word;
+    transition: color 0.15s ease;
+  }
+
+  &:hover:not(:disabled) strong,
+  &[aria-expanded='true'] strong {
+    color: var(--wm2-brand-text);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--wm2-brand) 60%, transparent);
+    outline-offset: 2px;
+  }
+}
+
+.wm2-cards-answer {
+  color: var(--wm2-muted);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.wm2-cards-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 10px 34px;
+
+  textarea {
+    width: 100%;
+    min-height: 96px;
+    border: 1px solid var(--wm2-line);
+    border-radius: var(--wm2-radius-row);
+    padding: 8px 10px;
+    background: var(--wm2-surface);
+    color: var(--text-normal);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.6;
+    resize: vertical;
+
+    &:focus,
+    &:focus-visible {
+      border-color: var(--wm2-brand);
+      box-shadow: 0 0 0 3px var(--wm2-brand-soft);
+    }
+  }
+}
+
+.wm2-cards-editor-foot {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.wm2-cards-tags {
+  flex: 1;
+  min-width: 0;
+}
+
+button.wm2-icon-btn.wm2-cards-danger:hover {
+  background: var(--wm2-error-soft);
+  color: var(--wm2-error);
+}
+
+.wm2-cards-empty {
+  p {
+    max-width: 260px;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+}
+
+// ---------- Save destination ----------
+button.wm2-btn.wm2-cards-destination {
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+
+  .wm2-cards-caret {
+    margin-left: auto;
+  }
+}
+
+.wm2-cards-sep {
+  flex: none;
+  color: var(--wm2-faint);
+}
+
+.wm2-cards-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--wm2-radius-row);
+  padding: 8px 12px;
+  background: var(--wm2-soft);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+
+  .wm2-cards-check {
+    margin-top: 0;
+  }
+
+  &:hover {
+    background: var(--wm2-line);
+  }
+
+  &:focus-within {
+    box-shadow: 0 0 0 2px var(--wm2-brand-soft);
+  }
+}
+
+// ---------- Sticky footer ----------
+// Chromium insets the sticky area by the 16px padding of .wm2-main, so bottom: -16px lands on the real edge.
+.wm2-cards-footer {
+  position: sticky;
+  bottom: -16px;
+  z-index: 2;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 56px;
+  margin: 0 -16px -16px;
+  border-top: 1px solid var(--wm2-line);
+  padding: 0 16px;
+  background: var(--wm2-glass);
+  backdrop-filter: blur(24px);
+}
+
+.wm2-cards-footer-hint {
+  flex: 1;
+  color: var(--wm2-faint);
+  font-size: 11px;
+}
+
+// ---------- Param dropdown ----------
+.wm2-cards-menu {
+  z-index: 1001;
+  min-width: max(var(--reka-select-trigger-width), 120px);
+  border: 1px solid var(--wm2-glass-border);
+  border-radius: var(--wm2-radius-card);
+  padding: 6px;
+  background: var(--wm2-glass);
+  color: var(--text-normal);
+  box-shadow: var(--wm2-float-shadow);
+  backdrop-filter: blur(24px);
+}
+
+.wm2-cards-menu-viewport {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.wm2-cards-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  border-radius: 8px;
+  padding: 0 8px;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+
+  &[data-highlighted] {
+    background: var(--wm2-soft);
+  }
+
+  &[data-state="checked"] {
+    color: var(--wm2-brand-text);
+    font-weight: var(--font-medium);
+  }
+}
+
+.wm2-cards-menu-check {
+  display: inline-flex;
+  margin-left: auto;
+
+  .wm-icon {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+// ---------- Destination dialog ----------
+.wm-modal-box.wm2-cards-dialog {
+  width: min(440px, calc(100% - 24px));
+  border-color: var(--wm2-card-border);
+  border-radius: var(--wm2-radius-card);
+  box-shadow: var(--wm2-float-shadow);
+}
+
+.wm2-segmented.wm2-cards-steps {
+  align-self: flex-start;
+  max-width: 100%;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+
+    .wm-icon {
+      flex: none;
+      width: 14px;
+      height: 14px;
+    }
+  }
+}
+
+.wm2-cards-dialog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  .wm2-cards-input {
+    flex: 1 1 160px;
+  }
+}
+
+.wisemindai-obsidian-root input.wm2-cards-input {
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--wm2-line);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: var(--wm2-soft);
+  font-size: 12px;
+
+  &:focus,
+  &:focus-visible {
+    border-color: var(--wm2-brand);
+    box-shadow: 0 0 0 3px var(--wm2-brand-soft);
+  }
+}
+
+.wm2-cards-dialog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 280px;
+  min-height: 80px;
+  overflow: auto;
+}
+
+.wm2-cards-dialog-loading {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+}
+
+.wm2-cards-dialog-empty {
+  padding: 20px 0;
+  text-align: center;
+}
+
+.wm2-cards-radio {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border-radius: var(--wm2-radius-row);
+  padding: 7px 10px;
+  font-size: 13px;
+  cursor: pointer;
+
+  input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .wm-icon {
+    flex: none;
+    color: var(--wm2-faint);
+  }
+
+  &:hover {
+    background: var(--wm2-soft);
+  }
+
+  &.is-active {
+    background: var(--wm2-brand-soft);
+    color: var(--wm2-brand-text);
+
+    .wm-icon {
+      color: var(--wm2-brand);
+    }
+  }
+
+  &:focus-within {
+    box-shadow: 0 0 0 2px var(--wm2-brand-soft);
+  }
+
+  &:active {
+    background: var(--wm2-line);
+  }
+}
+
+.wm-icon.wm2-cards-radio-check {
+  margin-left: auto;
+  color: var(--wm2-brand);
+}
+

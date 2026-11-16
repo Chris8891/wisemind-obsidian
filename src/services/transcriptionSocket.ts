@@ -28,6 +28,15 @@ type ServerMessage =
   | {type: 'event'; event: TranscriptionRuntimeEvent}
   | {type: 'response'; requestId: string; ok: boolean; data?: unknown; error?: string};
 
+export type TranscriptionSocketErrorCode = 'timeout' | 'failed' | 'closed' | 'notReady' | 'noActive' | 'requestFailed' | 'invalid';
+
+/** Carries a code so the UI can show a translated message instead of the English fallback text. */
+export class TranscriptionSocketError extends Error {
+  constructor(readonly code: TranscriptionSocketErrorCode, message: string, readonly serverMessage = '') {
+    super(serverMessage || message);
+  }
+}
+
 const toWebSocketUrl = (baseUrl: string) => {
   const url = new URL(baseUrl);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -63,7 +72,7 @@ export class WiseMindTranscriptionSocket {
       socket.binaryType = 'arraybuffer';
       this.socket = socket;
       const timeout = window.setTimeout(() => {
-        reject(new Error('Transcription connection timed out'));
+        reject(new TranscriptionSocketError('timeout', 'Transcription connection timed out'));
         socket.close();
       }, 10_000);
       socket.onopen = () => {
@@ -82,7 +91,7 @@ export class WiseMindTranscriptionSocket {
       };
       socket.onmessage = event => this.handleMessage(event.data);
       socket.onerror = () => {
-        const error = new Error('Transcription connection failed');
+        const error = new TranscriptionSocketError('failed', 'Transcription connection failed');
         this.callbacks.onError?.(error);
       };
       socket.onclose = () => {
@@ -135,25 +144,25 @@ export class WiseMindTranscriptionSocket {
     this.reconnectTimer = 0;
     this.recordId = '';
     this.bufferedAudio.splice(0);
-    this.rejectPending(new Error('Transcription connection closed'));
+    this.rejectPending(new TranscriptionSocketError('closed', 'Transcription connection closed'));
     this.socket?.close(1000, 'Client closed');
     this.socket = null;
   }
 
   private command(action: 'pause' | 'resume' | 'stop' | 'mark', payload?: Record<string, unknown>) {
-    if (!this.recordId) return Promise.reject(new Error('No active transcription'));
+    if (!this.recordId) return Promise.reject(new TranscriptionSocketError('noActive', 'No active transcription'));
     return this.request({type: 'command', recordId: this.recordId, action, payload});
   }
 
   private request<T>(message: Record<string, unknown>) {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error('Transcription connection is not ready'));
+      return Promise.reject(new TranscriptionSocketError('notReady', 'Transcription connection is not ready'));
     }
     const requestId = `obsidian-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     return new Promise<T>((resolve, reject) => {
       const timeout = window.setTimeout(() => {
         this.pending.delete(requestId);
-        reject(new Error('Transcription request timed out'));
+        reject(new TranscriptionSocketError('timeout', 'Transcription request timed out'));
       }, 15_000);
       this.pending.set(requestId, {resolve, reject, timeout});
       this.socket?.send(JSON.stringify({...message, requestId}));
@@ -173,9 +182,9 @@ export class WiseMindTranscriptionSocket {
       window.clearTimeout(pending.timeout);
       this.pending.delete(message.requestId);
       if (message.ok) pending.resolve(message.data);
-      else pending.reject(new Error(message.error || 'Transcription request failed'));
+      else pending.reject(new TranscriptionSocketError('requestFailed', 'Transcription request failed', message.error || ''));
     } catch (error) {
-      this.callbacks.onError?.(error instanceof Error ? error : new Error('Invalid response'));
+      this.callbacks.onError?.(error instanceof Error ? error : new TranscriptionSocketError('invalid', 'Invalid response'));
     }
   }
 

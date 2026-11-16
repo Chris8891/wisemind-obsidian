@@ -1,0 +1,561 @@
+// P-page styles for chat. Built on tokens and classes in ../v2.scss.
+
+.wm2-chat {
+  container-type: inline-size;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+// ---------- Session bar ----------
+.wm2-chat-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  min-width: 0;
+  border-bottom: 1px solid var(--wm2-line);
+  padding: 0 2px;
+  font-size: 12px;
+}
+
+.wm2-chat-bar-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--wm2-faint);
+}
+
+.wm2-chat-bar-title {
+  flex: 1;
+  font-weight: var(--font-medium);
+}
+
+.wm2-chat-bar-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+.wm2-chat-history-trigger {
+  display: inline-flex;
+}
+
+// Portaled to document.body (not the overflow:hidden panel root) so the menu is not clipped.
+.wm2-chat-popover {
+  z-index: var(--layer-popover, 1050);
+  transform-origin: var(--reka-popover-content-transform-origin);
+  animation: wm2-assist-pop 0.14s ease-out;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(300px, calc(100vw - 24px));
+  max-height: min(420px, 70vh);
+  border: 1px solid var(--wm2-card-border);
+  border-radius: var(--wm2-radius-card);
+  padding: 8px;
+  background: var(--wm2-surface);
+  color: var(--text-normal);
+  box-shadow: var(--wm2-float-shadow);
+
+  .wm2-section-title {
+    padding: 2px 8px;
+  }
+}
+
+.wm2-chat-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  margin: 0;
+  overflow-y: auto;
+  padding: 0;
+  list-style: none;
+}
+
+.wm2-chat-session-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  border-radius: 999px;
+
+  &.is-active {
+    background: var(--wm2-brand-soft);
+
+    .wm2-chat-session-main {
+      color: var(--wm2-brand-text);
+      font-weight: var(--font-medium);
+    }
+  }
+}
+
+.wisemindai-obsidian-root button.wm2-btn.is-ghost.wm2-chat-session-main.is-danger:hover {
+  background: var(--wm2-error-soft);
+  color: var(--wm2-error);
+}
+
+.wisemindai-obsidian-root button.wm2-chat-session-main {
+  flex: 1;
+  justify-content: flex-start;
+  min-width: 0;
+  padding: 0 8px;
+  text-align: left;
+
+  .wm-icon {
+    flex: none;
+  }
+}
+
+.wm2-chat-popover-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--wm2-line);
+  padding-top: 4px;
+}
+
+// ---------- Message stream ----------
+.wm2-chat-stream-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wisemindai-obsidian-root button.wm2-chat-jump {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--wm2-card-border);
+  border-radius: 50%;
+  padding: 0;
+  background: var(--wm2-surface);
+  color: var(--wm2-muted);
+  box-shadow: var(--wm2-float-shadow);
+  cursor: pointer;
+  animation: wm2-assist-pop 0.16s ease-out;
+  transition: color 0.15s ease, transform 0.1s ease;
+
+  .wm-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  &:hover {
+    color: var(--wm2-brand-text);
+  }
+
+  &:active {
+    transform: scale(0.92);
+  }
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--wm2-brand) 60%, transparent);
+    outline-offset: 2px;
+  }
+}
+
+.wm2-chat-stream {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 6px 2px;
+}
+
+.wm2-chat-empty {
+  flex: 1;
+  justify-content: center;
+
+  .wm2-tile {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+
+    .wm-icon {
+      width: 22px;
+      height: 22px;
+    }
+  }
+}
+
+.wm2-chat-empty-title {
+  color: var(--text-normal);
+  font-size: 15px;
+  font-weight: var(--font-medium);
+}
+
+.wm2-chat-user,
+.wm2-chat-answer {
+  animation: wm2-assist-fade 0.18s ease-out;
+}
+
+.wm2-chat-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+
+  &:hover .wm2-chat-user-meta,
+  &:focus-within .wm2-chat-user-meta {
+    opacity: 1;
+  }
+}
+
+.wm2-chat-bubble {
+  max-width: 85%;
+  border-radius: 16px 16px 6px;
+  padding: 8px 12px;
+  background: var(--wm2-brand-soft);
+  color: var(--text-normal);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wm2-chat-mention {
+  color: var(--wm2-info);
+  font-weight: var(--font-medium);
+
+  &::before {
+    content: "@";
+  }
+}
+
+.wm2-chat-user-meta {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--wm2-faint);
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+
+  > span {
+    margin-right: 4px;
+  }
+}
+
+.wm2-chat-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wm2-chat-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--wm2-faint);
+  font-size: 11px;
+
+  .wm2-logo.wm2-chat-logo {
+    flex: none;
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.wm2-chat-meta-refs {
+  flex: none;
+  white-space: nowrap;
+}
+
+.wm2-chat-meta-time {
+  flex: none;
+  margin-left: auto;
+}
+
+.wm2-chat-answer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.wm2-chat-sources-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  border-top: 1px solid var(--wm2-line);
+  padding: 8px 0 0;
+}
+
+.wm2-chat-sources-label {
+  color: var(--wm2-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.wm2-chat-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wisemindai-obsidian-root button.wm2-chat-source {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  border-radius: 8px;
+  padding: 3px 4px;
+  color: var(--wm2-muted);
+  font-size: 11px;
+  text-align: left;
+
+  .wm2-chip {
+    min-width: 18px;
+    height: 16px;
+    justify-content: center;
+    padding: 0 5px;
+    font-size: 10px;
+  }
+
+  .wm-icon {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    opacity: 0.6;
+  }
+
+  .wm2-truncate {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+  }
+
+  &:hover {
+    background: var(--wm2-soft);
+    color: var(--text-normal);
+  }
+}
+
+.wm2-chat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin-top: -4px;
+}
+
+.wisemindai-obsidian-root button.wm2-chat-regenerate {
+  margin-left: auto;
+}
+
+.wm2-chat-thinking {
+  animation: wm2-assist-fade 0.18s ease-out;
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: var(--wm2-soft);
+  color: var(--wm2-muted);
+  font-size: 12px;
+}
+
+.wm2-chat-error {
+  flex: none;
+  margin: 0;
+  border-radius: var(--wm2-radius-row);
+  padding: 8px 12px;
+  background: var(--wm2-error-soft);
+  color: var(--wm2-error);
+  font-size: 12px;
+  word-break: break-word;
+}
+
+// ---------- Composer ----------
+.wm2-composer.wm2-chat-composer {
+  z-index: 30;
+  flex: none;
+  margin-top: 0;
+}
+
+.wm2-chat-scope-chip {
+  max-width: min(100%, 260px);
+
+  > .wm2-truncate {
+    min-width: 0;
+  }
+}
+
+.wisemindai-obsidian-root button.wm2-chat-scope-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  color: inherit;
+  font-size: 11px;
+}
+
+.wisemindai-obsidian-root button.wm2-chat-scope-remove {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  margin-right: -3px;
+  border-radius: 50%;
+  color: inherit;
+  opacity: 0.7;
+
+  &:hover {
+    opacity: 1;
+  }
+}
+
+.wm2-chat-selected-menu {
+  transform-origin: bottom center;
+  animation: wm2-assist-pop 0.14s ease-out;
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--wm2-card-border);
+  border-radius: var(--wm2-radius-card);
+  padding: 6px;
+  background: var(--wm2-surface);
+  box-shadow: var(--wm2-float-shadow);
+}
+
+.wm2-chat-input-wrap {
+  position: relative;
+  min-width: 0;
+
+  .wm-mention-menu {
+    left: 0;
+    right: 0;
+    border-color: var(--wm2-card-border);
+    border-radius: 14px;
+    background: var(--wm2-surface);
+    box-shadow: var(--wm2-float-shadow);
+  }
+}
+
+.wm2-chat-input {
+  min-height: 44px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 2px 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  outline: none;
+
+  &:empty::before {
+    content: attr(data-placeholder);
+    color: var(--wm2-faint);
+    pointer-events: none;
+  }
+
+  .wm-mention-badge {
+    border: 0;
+    padding: 0 8px;
+    background: var(--wm2-info-soft);
+    color: var(--wm2-info);
+    font-weight: var(--font-medium);
+  }
+}
+
+.wm2-chat-tools {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wm2-chip.wm2-chat-model {
+  min-width: 0;
+  max-width: 160px;
+  margin-left: 2px;
+
+  .wm-icon {
+    flex: none;
+  }
+}
+
+.wisemindai-obsidian-root button.wm2-send.wm2-chat-send:disabled {
+  filter: grayscale(0.6);
+  opacity: 0.45;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.wisemindai-obsidian-root button.wm2-send.wm2-chat-stop {
+  background: var(--wm2-soft);
+  color: var(--text-normal);
+  box-shadow: var(--wm2-btn-shadow);
+
+  .wm-icon {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+// ---------- History dialog ----------
+.wm2-chat-history-dialog {
+  max-width: 560px;
+  border-radius: var(--wm2-radius-card);
+  box-shadow: var(--wm2-float-shadow);
+}
+
+.wm2-chat-history-list {
+  max-height: 400px;
+  min-height: 120px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+@container (max-width: 320px) {
+  .wm2-chip.wm2-chat-model {
+    display: none;
+  }
+
+  .wm2-chat-meta-time {
+    display: none;
+  }
+}
+
+// Answer scope picker in the composer footer
+.wisemindai-obsidian-root button.wm2-chip.wm2-chat-scope {
+  max-width: 140px;
+  cursor: pointer;
+}

@@ -32,10 +32,10 @@ export type WiseMindDestinationLabels = {
 export const defaultWiseMindDestinationLabels: WiseMindDestinationLabels = {
   notes: 'WiseMindAI notes',
   documents: 'WiseMindAI documents',
-  knowledge: 'WiseMindAI knowledge base',
-  noKnowledge: 'No knowledge bases',
-  createKnowledgeFirst: 'Create a knowledge base in WiseMindAI first',
-  knowledgeMeta: 'Knowledge base',
+  knowledge: 'WiseMindAI topic',
+  noKnowledge: 'No topics',
+  createKnowledgeFirst: 'Create a topic in WiseMindAI first',
+  knowledgeMeta: 'Topic',
   rootFolder: 'Root',
   folder: 'Folder',
 };

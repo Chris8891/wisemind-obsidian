@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { CheckIcon, ChevronDownIcon } from '@heroicons/vue/24/outline';
+import { CheckIcon, ChevronDownIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline';
 import {
   SelectContent,
   SelectItem,
@@ -30,6 +30,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const open = ref(false);
 const query = ref('');
+const searchInput = ref<HTMLInputElement | null>(null);
 const emptyValue = '__wisemind_empty_select_value__';
 
 const toSelectValue = (value: string) => (value === '' ? emptyValue : value);
@@ -52,6 +53,59 @@ const filteredOptions = computed(() => {
 watch(open, value => {
   if (value) query.value = '';
 });
+
+const enabledOptionElements = () =>
+  Array.from(
+    searchInput.value
+      ?.closest('.wm2-search-select')
+      ?.querySelectorAll<HTMLElement>('[role="option"]:not([data-disabled])') || [],
+  );
+
+const pick = (value: string) => {
+  emit('update:modelValue', value);
+  open.value = false;
+};
+
+// Arrow keys hand focus to the list (reka-ui takes over from there); Enter picks the first match;
+// Escape clears the query first and only closes the popover when it is already empty.
+const onSearchKeydown = (event: KeyboardEvent) => {
+  if (event.isComposing || event.keyCode === 229) {
+    event.stopPropagation();
+    return;
+  }
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    event.stopPropagation();
+    const items = enabledOptionElements();
+    (event.key === 'ArrowDown' ? items[0] : items[items.length - 1])?.focus();
+    return;
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    event.stopPropagation();
+    const first = filteredOptions.value.find(option => !option.disabled);
+    if (first) pick(first.value);
+    return;
+  }
+  if (event.key === 'Escape' && !query.value) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    query.value = '';
+  }
+  event.stopPropagation();
+};
+
+// Typing while an option is focused goes to the search box instead of reka-ui's typeahead.
+const onContentKeydown = (event: KeyboardEvent) => {
+  if (event.target === searchInput.value) return;
+  const isTextKey = event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+  if (!isTextKey && event.key !== 'Backspace') return;
+  if (event.key === ' ' && !query.value) return;
+  event.preventDefault();
+  event.stopPropagation();
+  query.value = event.key === 'Backspace' ? query.value.slice(0, -1) : query.value + event.key;
+  void nextTick(() => searchInput.value?.focus());
+};
 </script>
 
 <template>
@@ -60,7 +114,7 @@ watch(open, value => {
     v-model:open="open"
     @update:model-value="value => emit('update:modelValue', fromSelectValue(String(value)))"
   >
-    <SelectTrigger class="wm-select-trigger" :aria-label="placeholder || t('shared.select')">
+    <SelectTrigger class="wm2-select-trigger" :aria-label="placeholder || t('shared.select')">
       <SelectValue :placeholder="placeholder || t('shared.pleaseSelect')">
         {{ selectedLabel || placeholder || t('shared.pleaseSelect') }}
       </SelectValue>
@@ -68,38 +122,45 @@ watch(open, value => {
     </SelectTrigger>
     <SelectPortal :disabled="disablePortal">
       <SelectContent
-        class="wm-select-content wm-search-select-content"
+        class="wm2-popover wm2-search-select"
         position="popper"
-        :side-offset="4"
+        :side-offset="6"
+        :collision-padding="8"
         :disable-outside-pointer-events="false"
+        @keydown.capture="onContentKeydown"
       >
-        <SelectViewport class="wm-select-viewport wm-search-select-viewport">
+        <SelectViewport class="wm2-popover-viewport wm2-search-select-viewport">
           <SelectItem
             v-for="option in filteredOptions"
             :key="option.value"
-            class="wm-select-item wm-search-select-item"
+            class="wm2-menu-item"
             :value="toSelectValue(option.value)"
             :disabled="option.disabled"
             :text-value="option.label"
           >
             <SelectItemText>{{ option.label }}</SelectItemText>
-            <SelectItemIndicator class="wm-search-select-indicator">
+            <SelectItemIndicator class="wm2-menu-check">
               <CheckIcon class="wm-icon" />
             </SelectItemIndicator>
           </SelectItem>
-          <div v-if="!filteredOptions.length" class="wm-search-select-empty">
+          <div v-if="!filteredOptions.length" class="wm2-menu-empty">
             {{ emptyText || t('shared.noMatches') }}
           </div>
         </SelectViewport>
-        <div class="wm-search-select-footer">
-          <input
-            v-model="query"
-            class="wm-input"
-            :placeholder="searchPlaceholder || t('shared.searchFolder')"
-            @click.stop
-            @pointerdown.stop
-            @keydown.stop
-          />
+        <div class="wm2-search-select-footer">
+          <label class="wm2-search-field is-sm">
+            <MagnifyingGlassIcon class="wm-icon" />
+            <input
+              ref="searchInput"
+              v-model="query"
+              type="text"
+              :placeholder="searchPlaceholder || t('shared.searchFolder')"
+              :aria-label="searchPlaceholder || t('shared.searchFolder')"
+              @click.stop
+              @pointerdown.stop
+              @keydown="onSearchKeydown"
+            />
+          </label>
         </div>
       </SelectContent>
     </SelectPortal>

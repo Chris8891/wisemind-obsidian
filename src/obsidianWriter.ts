@@ -2,8 +2,16 @@ import type { App, TFile } from 'obsidian';
 
 import { prepareWiseMindImagesForObsidian } from './markdownImages';
 import { findSourceMarker } from './markers';
-import { quoteYamlString, sanitizeFileName } from './text';
+import {
+  assertSafeObsidianRelativePath,
+  quoteYamlString,
+  sanitizeFileName,
+  sanitizePathSegments,
+  trimSlashes,
+} from './text';
 import type { DuplicatePolicy, SyncItemResult, WiseMindSourceItem } from './types';
+
+export {assertSafeObsidianRelativePath} from './text';
 
 export type ObsidianWriterLabels = {
   unnamedKnowledge: string;
@@ -11,7 +19,7 @@ export type ObsidianWriterLabels = {
 };
 
 const defaultLabels: ObsidianWriterLabels = {
-  unnamedKnowledge: 'Untitled knowledge base',
+  unnamedKnowledge: 'Untitled topic',
   skippedSameSource: 'A file from the same source already exists',
 };
 
@@ -21,16 +29,18 @@ export const buildObsidianDestinationPath = (
   includeFolder = true,
   labels: ObsidianWriterLabels = defaultLabels,
 ) => {
-  const safeRoot = trimSlashes(root);
+  const safeRoot = sanitizePathSegments(trimSlashes(root));
   const safeTitle = sanitizeFileName(item.title, `${item.sourceType}-${item.id}`);
   const folder = includeFolder
     ? item.sourceType === 'note'
-      ? item.folderPath || ''
+      ? sanitizePathSegments(item.folderPath || '')
       : item.sourceType === 'document'
-        ? item.folderPath || ''
+        ? sanitizePathSegments(item.folderPath || '')
         : sanitizeFileName(item.knowledgeBaseName || labels.unnamedKnowledge, labels.unnamedKnowledge)
     : '';
-  return normalizePath(`${safeRoot ? `${safeRoot}/` : ''}${folder}/${safeTitle}.md`);
+  return assertSafeObsidianRelativePath(
+    normalizePath(`${safeRoot ? `${safeRoot}/` : ''}${folder}/${safeTitle}.md`),
+  );
 };
 
 export const buildObsidianFileContent = (item: WiseMindSourceItem, markdown = item.markdown) => {
@@ -72,7 +82,9 @@ export const writeWiseMindItemToObsidian = async (
     }
   }
 
-  const finalPath = policy === 'duplicate' ? await nextAvailablePath(app, targetPath) : targetPath;
+  const finalPath = assertSafeObsidianRelativePath(
+    policy === 'duplicate' ? await nextAvailablePath(app, targetPath) : targetPath,
+  );
   await ensureFolder(app, finalPath.split('/').slice(0, -1).join('/'));
   await app.vault.create(finalPath, content);
   return { title: item.title, source: finalPath, target: `Obsidian: ${finalPath}`, status: 'created' };
@@ -128,5 +140,4 @@ const hasWiseMindFrontmatter = (content: string, item: WiseMindSourceItem) =>
 
 const folderOf = (path: string) => path.includes('/') ? path.split('/').slice(0, -1).join('/') : '';
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const trimSlashes = (value: string) => value.replace(/^\/+|\/+$/g, '');
 const normalizePath = (value: string) => value.replace(/\/+/g, '/').replace(/\/\.md$/, '.md');

@@ -1,5 +1,56 @@
 export type DuplicatePolicy = 'skip' | 'update' | 'duplicate';
 
+/** Same as the WiseMindAI desktop app: 0 forgot, 1 vague, 2 remembered. */
+export type CardReviewGrade = 0 | 1 | 2;
+export type CardReviewStatus = 'new' | 'due' | 'learning' | 'scheduled';
+
+export type CardReviewState = {
+  status: CardReviewStatus;
+  dueAt: number;
+  lastGrade: number | null;
+  lastReviewedAt: number;
+  rememberStreak: number;
+  reviewCount: number;
+  forgotCount: number;
+};
+
+export type CardReviewCounts = {
+  due: number;
+  new: number;
+  learning: number;
+  scheduled: number;
+  total: number;
+};
+
+export type ReviewCard = {
+  id: number;
+  deckId: number;
+  deckTitle: string;
+  folderId: number;
+  content: string;
+  tags: string[];
+  sourcePath: string | null;
+  sourceAnchor: string | null;
+  review: CardReviewState;
+};
+
+export type ReviewDueResult = {
+  now: number;
+  nextDueAt: number;
+  summary: CardReviewCounts;
+  decks: Array<CardReviewCounts & {deckId: number; title: string}>;
+  cards: ReviewCard[];
+};
+
+export type WiseMindCardSummary = {
+  id: number;
+  deckId: number;
+  folderId: number;
+  content: string;
+  sourcePath?: string | null;
+  sourceAnchor?: string | null;
+};
+
 export type SyncDirection = 'obsidian-to-wisemind' | 'wisemind-to-obsidian';
 
 export type WiseMindResolvedLanguage = 'zh_CN' | 'en_US';
@@ -265,6 +316,133 @@ export type WiseMindImportSettings = {
   mentionNoteLimit: number;
   ignorePatterns: string[];
   chunkSize: number;
+  selectionToolbar: boolean;
+  rewritePreview: boolean;
+  review: WiseMindReviewSettings;
+  /** Learning space this vault is bound to; empty follows the active space in the desktop app. */
+  workspaceId: string;
+  syncRules: SyncRule[];
+  syncAuto: boolean;
+  /** Notes whose frontmatter has `private: true` are never synced or sent to AI. */
+  syncRespectPrivate: boolean;
+  syncConflictPolicy: SyncConflictPolicy;
+  slashCommands: boolean;
+  chatScope: ChatScope;
+};
+
+export type ChatScope = 'note' | 'note-library' | 'topic' | 'web';
+
+export type SyncConflictPolicy = 'ask' | 'overwrite';
+
+export type SyncRuleKind = 'folder' | 'tag';
+export type SyncRuleTrigger = 'auto' | 'manual';
+
+export type SyncRule = {
+  id: string;
+  kind: SyncRuleKind;
+  /** Folder path (no trailing slash, '' is the vault root) or tag without '#'. */
+  value: string;
+  includeSubfolders: boolean;
+  /**
+   * Folder → topic: new Markdown files under the folder join the topic on sync.
+   * Leaving the folder does not remove the topic link.
+   */
+  keepFolderInSync?: boolean;
+  /**
+   * Tag → topic: newly tagged notes join the topic on the next sync.
+   * Removing the tag does not remove the topic link.
+   */
+  autoJoinByTag?: boolean;
+  trigger: SyncRuleTrigger;
+  knowledgeBaseIds: number[];
+  knowledgeBaseNames: string[];
+  enabled: boolean;
+  createdAt: number;
+};
+
+/** Local bookkeeping for one synced note; stored outside data.json because it grows with the vault. */
+export type SyncRecord = {
+  contentHash: string;
+  mtime: number;
+  size: number;
+  remoteId: number | null;
+  remoteUpdatedAt: number | string | null;
+  remoteContentHash: string;
+  syncedAt: number;
+  /** The user kept the WiseMindAI version; the note is skipped until restored. */
+  held?: boolean;
+  /** Topics the file was already added to, so later updates do not add it again. */
+  topicIds?: number[];
+};
+
+export type WiseMindCapabilities = {
+  aiReady?: boolean;
+  aiModel?: string | null;
+  appVersion?: string;
+  version?: string;
+  features?: string[];
+};
+
+export type WiseMindUsageItem = {key: string; usage: number; limit: number | null};
+
+export type WiseMindAccountUsage = {
+  plan: string;
+  expirationDate?: string | null;
+  items: WiseMindUsageItem[];
+};
+
+export type FileUpsertPayload = {
+  name: string;
+  filePath: string;
+  type: 'md';
+  fileType: string;
+  content: string;
+  source: 'obsidian';
+  knowledgeBaseIds?: number[];
+  workspaceId?: string;
+};
+
+export type FileUpsertResult = {
+  id: number;
+  created: boolean;
+  existed: boolean;
+  updatedAt: number | string | null;
+  contentHash: string;
+  knowledgeBases?: Array<{knowledgeBaseId: number; ok: boolean; error?: string; code?: string}>;
+};
+
+export type AssistantTaskStep = {
+  title: string;
+  action: 'modify' | 'create';
+  path: string;
+  /** Optional ready-made content; when absent the plugin asks the assistant per step. */
+  content?: string;
+};
+
+export type AssistantTaskPlan = {
+  steps: AssistantTaskStep[];
+  modifyCount: number;
+  createCount: number;
+};
+
+export type ChatCitation = {
+  index?: number;
+  sourceType?: string;
+  id?: string | number;
+  title?: string;
+  path?: string;
+  snippet?: string;
+  knowledgeBaseId?: string | number;
+};
+
+export type WiseMindReviewSettings = {
+  includeNew: boolean;
+  sessionLimit: number;
+  trackRename: boolean;
+  reminder: boolean;
+  /** Local time in HH:MM after which the daily reminder may fire. */
+  reminderTime: string;
+  lastReminderDate: string;
 };
 
 export type AssistantSummaryDraft = {

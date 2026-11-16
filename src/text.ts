@@ -25,6 +25,15 @@ export const safeJsonParse = <T>(value: unknown, fallback: T): T => {
   }
 };
 
+/**
+ * Newer desktop versions return `tagNames` (tag text); prefer it.
+ * Older versions store tag ids in `tags`; bare numeric ids are meaningless in Obsidian and are dropped.
+ */
+export const normalizeWiseMindTags = (item: {tagNames?: unknown; tags?: unknown}): string[] => {
+  if (Array.isArray(item?.tagNames)) return normalizeTags(item.tagNames);
+  return normalizeTags(item?.tags).filter(tag => !/^\d+$/.test(tag));
+};
+
 export const normalizeTags = (value: unknown): string[] => {
   const parsed = typeof value === 'string' ? safeJsonParse<unknown>(value, value) : value;
   if (Array.isArray(parsed)) {
@@ -54,6 +63,32 @@ export const normalizeTags = (value: unknown): string[] => {
 export const sanitizeFileName = (value: string, fallback: string) => {
   const text = (value || fallback).replace(/[\\/:"*?<>|]/g, '-').replace(/\s+/g, ' ').trim();
   return text || fallback;
+};
+
+export const trimSlashes = (value: string) => value.replace(/^\/+|\/+$/g, '');
+
+export const sanitizePathSegments = (value: string) =>
+  trimSlashes(value)
+    .split('/')
+    .filter(part => part && part !== '.' && part !== '..' && part !== '.obsidian')
+    .map(part => sanitizeFileName(part, part))
+    .join('/');
+
+/** Rejects `..`, empty paths, and writes under `.obsidian`. */
+export const assertSafeObsidianRelativePath = (path: string) => {
+  const normalized = String(path || '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+    .replace(/\/+/g, '/');
+  const parts = normalized.split('/').filter(Boolean);
+  if (!parts.length) throw new Error('Invalid empty Obsidian path');
+  if (parts.some(part => part === '..' || part === '.')) {
+    throw new Error(`Unsafe Obsidian path: ${path}`);
+  }
+  if (parts.some(part => part === '.obsidian')) {
+    throw new Error(`Refusing to write under .obsidian: ${path}`);
+  }
+  return normalized;
 };
 
 export const quoteYamlString = (value: string) => JSON.stringify(value ?? '');

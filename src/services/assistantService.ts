@@ -1,4 +1,4 @@
-import { Notice } from 'obsidian';
+import { Notice, TFile } from 'obsidian';
 
 import {
   type AssistantActionKind,
@@ -13,14 +13,21 @@ import { readObsidianFile } from '../vaultScanner';
 
 export type SourceMode = 'current' | 'selection' | 'multi';
 
-export const createAssistantPlan = async (
-  plugin: WiseMindObsidianPlugin,
-  kind: AssistantActionKind,
-  mode: SourceMode,
-  multiNotes: ObsidianSourceItem[],
-): Promise<AssistantActionPlan | null> => {
+// Picked notes are snapshots from when the picker was confirmed; read them again so edits made since are included.
+const rereadNotes = (plugin: WiseMindObsidianPlugin, notes: ObsidianSourceItem[]) =>
+  Promise.all(notes.map(async note => {
+    const file = plugin.app.vault.getAbstractFileByPath(note.path);
+    if (!(file instanceof TFile)) return note;
+    try {
+      return await readObsidianFile(plugin.app, file);
+    } catch {
+      return note;
+    }
+  }));
+
+export const assistantActionLabels = (plugin: WiseMindObsidianPlugin) => {
   const languageSetting = plugin.settings.assistantDefaults.language;
-  const actionLabels = {
+  return {
     currentNote: translate(languageSetting, 'assistantActions.currentNote'),
     selectionExcerpt: (title: string) => translate(languageSetting, 'assistantActions.selectionExcerpt', {title}),
     noContent: translate(languageSetting, 'assistantActions.noContent'),
@@ -28,12 +35,26 @@ export const createAssistantPlan = async (
     sourceHeading: (index: number, path: string) =>
       translate(languageSetting, 'assistantActions.sourceHeading', {index, path}),
   };
+};
+
+export const createAssistantPlan = async (
+  plugin: WiseMindObsidianPlugin,
+  kind: AssistantActionKind,
+  mode: SourceMode,
+  multiNotes: ObsidianSourceItem[],
+): Promise<AssistantActionPlan | null> => {
+  const languageSetting = plugin.settings.assistantDefaults.language;
+  const actionLabels = assistantActionLabels(plugin);
   if (mode === 'multi') {
     if (!multiNotes.length) {
       new Notice(translate(languageSetting, 'obsidianMessages.chooseNotesFirst'));
       return null;
     }
-    return buildMultiNoteAssistantActionPlan({ kind, notes: multiNotes, labels: actionLabels });
+    return buildMultiNoteAssistantActionPlan({
+      kind,
+      notes: await rereadNotes(plugin, multiNotes),
+      labels: actionLabels,
+    });
   }
 
   const activeFile = plugin.app.workspace.getActiveFile();
@@ -63,8 +84,8 @@ export const summarize = async (
     sourceKind: plan.sourceKind,
     sourcePaths: plan.sourcePaths,
     language,
-    style: defaults.summaryStyle,
-    promptKey,
+    style: plan.preset === 'insights' ? 'brief' : defaults.summaryStyle,
+    promptKey: plan.preset === 'insights' ? '' : promptKey,
   }, { signal });
 
   return {
@@ -98,8 +119,8 @@ export const summarizeStream = async (
       sourceKind: plan.sourceKind,
       sourcePaths: plan.sourcePaths,
       language,
-      style: defaults.summaryStyle,
-      promptKey,
+      style: plan.preset === 'insights' ? 'brief' : defaults.summaryStyle,
+      promptKey: plan.preset === 'insights' ? '' : promptKey,
     },
     {
       onDelta: text => {

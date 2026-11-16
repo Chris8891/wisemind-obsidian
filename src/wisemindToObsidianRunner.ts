@@ -24,7 +24,7 @@ export type WiseMindToObsidianOptions = {
 export const runWiseMindToObsidianImport = async (options: WiseMindToObsidianOptions): Promise<SyncRunResult> => {
   const result = emptyResult();
   const labels = options.labels || {
-    unnamedKnowledge: 'Untitled knowledge base',
+    unnamedKnowledge: 'Untitled topic',
     skippedSameSource: 'A file from the same source already exists',
     syncFailed: 'Sync failed',
     failedTarget: 'Failed',

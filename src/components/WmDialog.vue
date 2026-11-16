@@ -3,11 +3,14 @@
   import {
     DialogClose,
     DialogContent,
+    DialogDescription,
     DialogOverlay,
     DialogPortal,
     DialogRoot,
     DialogTitle,
   } from 'reka-ui';
+
+  import {focusDialogInitial} from '../composables/dialogFocus';
 
   withDefaults(
     defineProps<{
@@ -32,17 +35,19 @@
 <template>
   <DialogRoot :open="open" @update:open="emit('update:open', $event)">
     <DialogPortal to="#wisemindai-obsidian-root">
-      <DialogOverlay class="wm-modal-overlay">
-        <DialogContent class="wm-modal-box" :class="contentClass">
-          <header class="wm-dialog-header">
-            <div class="wm:grid wm:min-w-0 wm:gap-1 wm:pr-10">
-              <DialogTitle class="wm-dialog-title">{{ title }}</DialogTitle>
-              <p v-if="description" class="wm-muted wm:m-0">{{ description }}</p>
-            </div>
-            <DialogClose
-              class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
-              :aria-label="t('dialog.close')"
-              type="button"
+      <DialogOverlay class="wm2-dialog-overlay">
+        <DialogContent
+          class="wm2-dialog"
+          :class="contentClass"
+          v-bind="description ? {} : {'aria-describedby': undefined}"
+          @open-auto-focus="focusDialogInitial"
+        >
+          <header class="wm2-dialog-header">
+            <DialogTitle class="wm2-dialog-title">{{ title }}</DialogTitle>
+            <DialogDescription v-if="description" as="p" class="wm2-dialog-desc">{{
+              description
+            }}</DialogDescription>
+            <DialogClose class="wm2-dialog-close" :aria-label="t('dialog.close')" type="button"
               >✕</DialogClose
             >
           </header>

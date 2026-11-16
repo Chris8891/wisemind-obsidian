@@ -1,4 +1,4 @@
-export type EditorRewriteAction = 'rewrite' | 'expand' | 'shorten' | 'polish' | 'tags';
+export type EditorRewriteAction = 'rewrite' | 'expand' | 'shorten' | 'polish' | 'tags' | 'translate';
 export type EditorRewriteLabels = Record<EditorRewriteAction, string>;
 
 export const defaultEditorRewriteLabels: EditorRewriteLabels = {
@@ -7,6 +7,7 @@ export const defaultEditorRewriteLabels: EditorRewriteLabels = {
   shorten: 'Shorten',
   polish: 'Polish',
   tags: 'Generate tags',
+  translate: 'Translate',
 };
 
 export const rewriteActionLabel = (

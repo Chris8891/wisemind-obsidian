@@ -24,6 +24,15 @@ await build({
     'src/services/transcriptionHistory.ts',
     'src/quickActions.ts',
     'src/services/domRef.ts',
+    'src/services/cardReview.ts',
+    'src/services/relatedNotes.ts',
+    'src/services/searchResults.ts',
+    'src/services/textDiff.ts',
+    'src/sync/syncRules.ts',
+    'src/apiErrors.ts',
+    'src/features.ts',
+    'src/loopback.ts',
+    'src/text.ts',
     'src/i18n/zh_CN.ts',
     'src/i18n/en_US.ts',
   ],
@@ -56,8 +65,28 @@ const transcriptionHistoryHelpers = await import(
 );
 const quickActionHelpers = await import(pathToFileURL(join(helperOutdir, 'quickActions.js')));
 const domRefHelpers = await import(pathToFileURL(join(helperOutdir, 'domRef.js')));
+const cardReviewHelpers = await import(pathToFileURL(join(helperOutdir, 'cardReview.js')));
+const relatedNotesHelpers = await import(pathToFileURL(join(helperOutdir, 'relatedNotes.js')));
+const searchResultsHelpers = await import(pathToFileURL(join(helperOutdir, 'searchResults.js')));
+const textDiffHelpers = await import(pathToFileURL(join(helperOutdir, 'textDiff.js')));
+const syncRulesHelpers = await import(pathToFileURL(join(helperOutdir, 'syncRules.js')));
+const apiErrorHelpers = await import(pathToFileURL(join(helperOutdir, 'apiErrors.js')));
+const featureHelpers = await import(pathToFileURL(join(helperOutdir, 'features.js')));
+const loopbackHelpers = await import(pathToFileURL(join(helperOutdir, 'loopback.js')));
+const textHelpers = await import(pathToFileURL(join(helperOutdir, 'text.js')));
 const zhCNMessages = (await import(pathToFileURL(join(helperOutdir, 'zh_CN.js')))).default;
 const enUSMessages = (await import(pathToFileURL(join(helperOutdir, 'en_US.js')))).default;
+
+// The transcription page is split into src/components/pages/transcription/*, so check them together.
+const readTranscriptionPageSource = async () => {
+  const dir = 'src/components/pages/transcription';
+  const names = (await readdir(dir)).filter(name => /\.(ts|vue)$/.test(name)).sort();
+  const sources = await Promise.all([
+    readFile('src/components/pages/TranscriptionPage.vue', 'utf8'),
+    ...names.map(name => readFile(`${dir}/${name}`, 'utf8')),
+  ]);
+  return sources.join('\n');
+};
 
 const collectI18nMessages = (messages, prefix = '') => {
   const items = [];
@@ -77,6 +106,13 @@ test('manifest uses publishable WiseMindAI plugin identity', async () => {
   assert.equal(manifest.id, 'wisemindai');
   assert.equal(manifest.name, 'WiseMindAI');
   assert.equal(manifest.isDesktopOnly, true);
+});
+
+test('apiBaseUrl accepts only loopback hosts', () => {
+  assert.equal(loopbackHelpers.checkApiBaseUrl('http://127.0.0.1:38221'), 'ok');
+  assert.equal(loopbackHelpers.checkApiBaseUrl('http://localhost:38221'), 'ok');
+  assert.equal(loopbackHelpers.checkApiBaseUrl('http://evil.example:38221'), 'not-loopback');
+  assert.equal(loopbackHelpers.sanitizeApiBaseUrl('http://evil.example:38221'), 'http://127.0.0.1:38221');
 });
 
 test('new Vue plugin package keeps UI dependencies local', async () => {
@@ -100,14 +136,58 @@ test('language setting defaults to Obsidian and only exposes Chinese and English
   assert.match(i18nSource, /value: 'en_US'/);
 });
 
-test('context menu defaults hidden and only registers actions when enabled', async () => {
+test('context menu shows one WiseMindAI entry by default and can be turned off', async () => {
   const settingsSource = await readFile('src/settings.ts', 'utf8');
-  const mainSource = await readFile('src/main.ts', 'utf8');
+  const menusSource = await readFile('src/plugin/menus.ts', 'utf8');
 
-  assert.match(settingsSource, /showContextMenu: false/);
-  assert.match(settingsSource, /raw\?\.showContextMenu === true/);
-  assert.match(mainSource, /if \(!this\.settings\.showContextMenu\) return;/);
-  assert.match(mainSource, /on\('files-menu'/);
+  assert.match(settingsSource, /showContextMenu: true/);
+  assert.match(settingsSource, /raw\?\.showContextMenu !== false/);
+  assert.match(menusSource, /if \(!plugin\.settings\.showContextMenu\) return;/);
+  assert.match(menusSource, /on\('files-menu'/);
+  assert.match(menusSource, /setSubmenu/);
+});
+
+test('2.0.0 release metadata is consistent and follows Obsidian manifest rules', async () => {
+  const manifest = JSON.parse(await readFile('manifest.json', 'utf8'));
+  const pkg = JSON.parse(await readFile('package.json', 'utf8'));
+  const versions = JSON.parse(await readFile('versions.json', 'utf8'));
+
+  assert.equal(manifest.version, '2.0.0');
+  assert.equal(pkg.version, manifest.version);
+  assert.equal(versions[manifest.version], manifest.minAppVersion);
+  assert.match(manifest.description, /^[A-Z][^\u4e00-\u9fff]*\.$/);
+  assert.doesNotMatch(manifest.description, /obsidian/i);
+});
+
+test('plugin source follows Obsidian review guidelines', async () => {
+  const files = await sourceFiles('src');
+  for (const file of files) {
+    const source = await readFile(file, 'utf8');
+    assert.doesNotMatch(source, /\bconsole\.(log|info|debug)\(/, `${file} should not log to the console`);
+    assert.doesNotMatch(source, /\.innerHTML\s*=|\.outerHTML\s*=|insertAdjacentHTML|v-html=/, `${file} should not inject HTML`);
+    assert.doesNotMatch(source, /\bhotkeys\s*:/, `${file} should not assign default hotkeys`);
+    assert.doesNotMatch(source, /detachLeavesOfType/, `${file} should not detach leaves on unload`);
+  }
+
+  const commandsSource = await readFile('src/plugin/commands.ts', 'utf8');
+  const commandIds = [...commandsSource.matchAll(/id: [`'"]([^`'"]+)/g)].map(match => match[1]);
+  assert.ok(commandIds.length >= 10);
+  commandIds.forEach(id => assert.doesNotMatch(id, /wisemind/i, `command id ${id} should not repeat the plugin id`));
+  for (const messages of [zhCNMessages, enUSMessages]) {
+    for (const [key, name] of collectI18nMessages({...messages.commands, ...messages.commandsV2})) {
+      assert.doesNotMatch(name, /^WiseMindAI/, `command ${key} should not repeat the plugin name`);
+    }
+  }
+});
+
+test('build keeps Vue in production mode and the bundle small', async () => {
+  const main = await readFile('dist/main.js', 'utf8');
+  const config = await readFile('vite.config.mjs', 'utf8');
+
+  assert.match(config, /'process\.env\.NODE_ENV'/);
+  assert.match(config, /__VUE_PROD_DEVTOOLS__: 'false'/);
+  assert.doesNotMatch(main, /markstream|mermaid|monaco/i);
+  assert.ok(main.length < 900 * 1024, `main.js is ${Math.round(main.length / 1024)} KB`);
 });
 
 test('transcription defaults keep official records in WiseMindAI and avoid automatic note writes', async () => {
@@ -121,7 +201,7 @@ test('transcription defaults keep official records in WiseMindAI and avoid autom
 
 test('transcription lives in the plugin shell and controller instead of the page lifecycle', async () => {
   const panelSource = await readFile('src/components/PanelApp.vue', 'utf8');
-  const pageSource = await readFile('src/components/pages/TranscriptionPage.vue', 'utf8');
+  const pageSource = await readTranscriptionPageSource();
   const mainSource = await readFile('src/main.ts', 'utf8');
   const apiSource = await readFile('src/wisemindApi.ts', 'utf8');
   const localApiCommonSource = await readFile(
@@ -245,7 +325,7 @@ test('live transcription note content ignores partial text and restores confirme
 
 test('transcription controller avoids duplicate segments and duplicate note completion writes', async () => {
   const controllerSource = await readFile('src/services/transcriptionController.ts', 'utf8');
-  const pageSource = await readFile('src/components/pages/TranscriptionPage.vue', 'utf8');
+  const pageSource = await readTranscriptionPageSource();
   const writerSource = await readFile('src/services/transcriptionLiveNoteWriter.ts', 'utf8');
 
   assert.match(controllerSource, /segmentIds\.has\(event\.segment\.id\)/);
@@ -254,7 +334,7 @@ test('transcription controller avoids duplicate segments and duplicate note comp
   assert.match(controllerSource, /liveNoteWriteStatus !== 'completed'/);
   assert.match(pageSource, /isCurrentNoteAlreadyWritten/);
   assert.match(pageSource, /v-memo=/);
-  assert.match(pageSource, /scheduleScrollToLatest/);
+  assert.match(pageSource, /useStickToBottom/);
   assert.match(pageSource, /handleLiveWriteToggle/);
   assert.match(pageSource, /refreshActiveFile/);
   assert.match(pageSource, /vault\.on\?\.\('rename'/);
@@ -316,7 +396,7 @@ test('Obsidian transcription starts the recognition connection and provides a pr
     'utf8',
   );
   const apiSource = await readFile('src/wisemindApi.ts', 'utf8');
-  const pageSource = await readFile('src/components/pages/TranscriptionPage.vue', 'utf8');
+  const pageSource = await readTranscriptionPageSource();
   const localApiTranscriptionSource = await readFile(
     '../main/src/service/localApiServer/handlers/transcriptions.ts',
     'utf8',
@@ -324,7 +404,7 @@ test('Obsidian transcription starts the recognition connection and provides a pr
 
   assert.match(socketServerSource, /subscribe\(socket, record\.id\);[\s\S]+service\.connect\(record\.id\)/);
   assert.match(apiSource, /openExternal\(buildWiseMindDeepLink\(payload\)\)/);
-  assert.match(apiSource, /wisemindai:\/\/open/);
+  assert.match(await readFile('src/apiUtils.ts', 'utf8'), /wisemindai:\/\/open/);
   assert.match(pageSource, /transcription\.history/);
   assert.match(pageSource, /speakerDiarization/);
   assert.match(pageSource, /segment\.speakerLabel/);
@@ -509,9 +589,7 @@ test('Tailwind CSS output keeps prefixed utilities for Obsidian views', async ()
 
   assert.match(source, /@source "\.\/\*\*\/\*\.vue";/);
   assert.match(source, /@source "\.\/\*\*\/\*\.ts";/);
-  assert.match(builtCss, /\.wm\\:flex\{/);
-  assert.match(builtCss, /\.wm\\:w-full\{/);
-  assert.match(builtCss, /\.wm\\:text-xs\{/);
+  assert.match(builtCss, /\.wm\\:[a-z][\w-]*\{/);
 });
 
 test('note mention search returns title and folder matches with title-first display data', () => {
@@ -591,7 +669,7 @@ test('sync preview summarizes selected sources and targets before execution', ()
   const preview = syncPreviewHelpers.buildSyncPreview({
     direction: 'to-wisemind',
     sourceCount: 3,
-    targetLabels: ['Knowledge base: Obsidian import', 'Note: Root'],
+    targetLabels: ['Topic: Obsidian import', 'Note: Root'],
     overwriteExisting: true,
   });
 
@@ -645,4 +723,246 @@ test('cards markdown formatter creates a review section with normalized tags', (
   assert.match(markdown, /### Card 1\n\n第一张卡片/);
   assert.match(markdown, /Tags: #概念 #复习/);
   assert.match(markdown, /### Card 2\n\n第二张卡片/);
+});
+
+test('card review helpers split faces and follow the desktop schedule', () => {
+  assert.deepEqual(cardReviewHelpers.splitCardContent('Q: What is it?\nA: An answer'), {
+    question: 'What is it?',
+    answer: 'An answer',
+  });
+  assert.deepEqual(cardReviewHelpers.splitCardContent('Front\n\n---\n\nBack'), {question: 'Front', answer: 'Back'});
+  assert.deepEqual(cardReviewHelpers.splitCardContent('Only one line'), {question: 'Only one line', answer: ''});
+
+  assert.equal(cardReviewHelpers.nextRememberDays(null), 1);
+  assert.equal(cardReviewHelpers.nextRememberDays({lastGrade: 2, rememberStreak: 1}), 3);
+  assert.equal(cardReviewHelpers.nextRememberDays({lastGrade: 0, rememberStreak: 4}), 1);
+  assert.equal(cardReviewHelpers.nextRememberDays({lastGrade: 2, rememberStreak: 99}), 60);
+
+  assert.equal(cardReviewHelpers.gradeFromKey('1'), 0);
+  assert.equal(cardReviewHelpers.gradeFromKey('3'), 2);
+  assert.equal(cardReviewHelpers.gradeFromKey('4'), null);
+  assert.equal(cardReviewHelpers.estimateReviewMinutes(0), 0);
+  assert.equal(cardReviewHelpers.estimateReviewMinutes(30), 10);
+  assert.deepEqual(
+    cardReviewHelpers.summarizeReviewResults([
+      {cardId: 1, grade: 2, duration: 5},
+      {cardId: 2, grade: 0, duration: 7},
+    ]),
+    {remember: 1, vague: 0, forgot: 1, duration: 12},
+  );
+});
+
+test('related notes rank links, shared tags, then folder neighbours', () => {
+  const tags = relatedNotesHelpers.collectNoteTags({
+    tags: [{tag: '#Project'}],
+    frontmatter: {tags: ['review', '#project']},
+  });
+  assert.deepEqual(tags.sort(), ['project', 'review']);
+
+  const ranked = relatedNotesHelpers.rankRelatedNotes({
+    activePath: 'Work/Plan.md',
+    activeTags: ['project'],
+    linkedPaths: new Set(['Archive/Linked.md']),
+    candidates: [
+      {path: 'Work/Plan.md', title: 'Plan', folderPath: 'Work', tags: [], modifiedAt: 1},
+      {path: 'Work/Sibling.md', title: 'Sibling', folderPath: 'Work', tags: [], modifiedAt: 5},
+      {path: 'Archive/Linked.md', title: 'Linked', folderPath: 'Archive', tags: [], modifiedAt: 1},
+      {path: 'Other/Tagged.md', title: 'Tagged', folderPath: 'Other', tags: ['Project'], modifiedAt: 1},
+      {path: 'Other/None.md', title: 'None', folderPath: 'Other', tags: [], modifiedAt: 9},
+    ],
+  });
+  assert.deepEqual(ranked.map(note => note.title), ['Linked', 'Tagged', 'Sibling']);
+  assert.equal(ranked[0].linked, true);
+  assert.equal(ranked[1].sharedTag, 'Project');
+});
+
+test('unified search matches vault titles and normalizes WiseMindAI groups', () => {
+  const hits = searchResultsHelpers.searchVaultItems([
+    {path: 'Notes/Alpha plan.md', title: 'Alpha plan', folderPath: 'Notes', modifiedAt: 1},
+    {path: 'Alpha/Readme.md', title: 'Readme', folderPath: 'Alpha', modifiedAt: 2},
+    {path: 'Notes/Beta.md', title: 'Beta', folderPath: 'Notes', modifiedAt: 3},
+  ], 'alpha');
+  assert.deepEqual(hits.map(hit => hit.title), ['Alpha plan', 'Readme']);
+  assert.equal(hits[0].titleMatch, true);
+  assert.deepEqual(searchResultsHelpers.searchVaultItems([], '  '), []);
+
+  const remote = searchResultsHelpers.normalizeWiseMindSearch({
+    data: {
+      notes: [{id: 3, title: 'Remote note', snippet: 'first   line'}],
+      cards: [{id: 9, content: 'card body', deckId: 2}],
+      'knowledge-documents': [{id: 1, name: 'Doc', knowledgeBaseId: 7}],
+    },
+  });
+  assert.deepEqual(remote.map(item => [item.type, item.title]), [
+    ['note', 'Remote note'],
+    ['knowledge-document', 'Doc'],
+  ]);
+  assert.equal(remote[0].snippet, 'first line');
+  assert.equal(remote[1].knowledgeBaseId, '7');
+});
+
+test('rewrite diff marks changes and tag helpers merge frontmatter safely', () => {
+  const parts = textDiffHelpers.diffText('The quick fox', 'The slow fox');
+  assert.deepEqual(parts, [
+    {type: 'same', text: 'The '},
+    {type: 'removed', text: 'quick'},
+    {type: 'added', text: 'slow'},
+    {type: 'same', text: ' fox'},
+  ]);
+  const cjk = textDiffHelpers.diffText('\u5b66\u4e60\u65b9\u6cd5', '\u5b66\u4e60\u6280\u5de7');
+  assert.equal(cjk[0].text, '\u5b66\u4e60');
+  assert.equal(textDiffHelpers.diffText('a '.repeat(2000), 'b '.repeat(2000)), null);
+
+  assert.deepEqual(textDiffHelpers.parseGeneratedTags('#AI #learning #AI'), ['AI', 'learning']);
+  assert.deepEqual(textDiffHelpers.parseGeneratedTags('note taking, review'), ['note-taking', 'review']);
+  assert.deepEqual(textDiffHelpers.mergeFrontmatterTags('ai, #notes', ['AI', 'review']), {
+    tags: ['ai', 'notes', 'review'],
+    addedCount: 1,
+  });
+});
+
+test('sync rules match folders and nested tags, and skip private or ignored notes', () => {
+  const rule = (kind, value, extra = {}) => ({
+    id: 'r', kind, value, includeSubfolders: true, trigger: 'auto', knowledgeBaseIds: [], knowledgeBaseNames: [],
+    enabled: true, createdAt: 0, ...extra,
+  });
+  const note = (path, tags = [], frontmatter = null) => ({path, tags, frontmatter});
+  assert.equal(syncRulesHelpers.ruleMatches(rule('folder', 'Study/'), note('Study/os/a.md')), true);
+  assert.equal(syncRulesHelpers.ruleMatches(rule('folder', 'Study', {includeSubfolders: false}), note('Study/os/a.md')), false);
+  assert.equal(syncRulesHelpers.ruleMatches(rule('folder', 'Study'), note('Studying/a.md')), false);
+  assert.equal(syncRulesHelpers.ruleMatches(rule('folder', '', {includeSubfolders: false}), note('a.md')), true);
+  assert.equal(syncRulesHelpers.ruleMatches(rule('tag', '#study'), note('a.md', ['#Study/os'])), true);
+  assert.equal(syncRulesHelpers.ruleMatches(rule('tag', 'study'), note('a.md', ['studying'])), false);
+  assert.equal(syncRulesHelpers.ruleMatches(rule('tag', 'study', {enabled: false}), note('a.md', ['study'])), false);
+  assert.deepEqual(
+    syncRulesHelpers.topicIdsFor([rule('tag', 'a', {knowledgeBaseIds: [3, 1]}), rule('tag', 'b', {knowledgeBaseIds: [1, 0, 5]})]),
+    [3, 1, 5],
+  );
+  const options = {ignorePatterns: ['Private/**', '**/drafts/**'], respectPrivate: true};
+  assert.equal(syncRulesHelpers.isNoteExcluded(note('Private/a.md'), options), true);
+  assert.equal(syncRulesHelpers.isNoteExcluded(note('x/drafts/a.md'), options), true);
+  assert.equal(syncRulesHelpers.isNoteExcluded(note('Private2/a.md'), options), false);
+  assert.equal(syncRulesHelpers.isPathIgnored('.trash/a.md', ['**/.trash/**']), true);
+  assert.equal(syncRulesHelpers.isPathIgnored('x/.trash/a.md', ['**/.trash/**']), true);
+  assert.equal(syncRulesHelpers.isPathIgnored('x/my.trash/a.md', ['**/.trash/**']), false);
+  assert.equal(syncRulesHelpers.isPathIgnored('.obsidian/app.json', ['.obsidian/**']), true);
+  assert.equal(syncRulesHelpers.isNoteExcluded(note('a.md', [], {private: 'true'}), options), true);
+  assert.equal(syncRulesHelpers.isNoteExcluded(note('a.md', [], {private: true}), {...options, respectPrivate: false}), false);
+});
+
+test('incremental sync classifies by stat first and by hash only when needed', () => {
+  const record = {path: 'a.md', remoteId: '9', contentHash: 'h1', mtime: 10, size: 5, syncedAt: 0};
+  assert.equal(syncRulesHelpers.classifyByStat({mtime: 10, size: 5}, null), 'new');
+  assert.equal(syncRulesHelpers.classifyByStat({mtime: 10, size: 5}, record), 'unchanged');
+  assert.equal(syncRulesHelpers.classifyByStat({mtime: 11, size: 5}, record), null);
+  assert.equal(syncRulesHelpers.classifyByStat({mtime: 11, size: 5}, {...record, held: true}), 'held');
+  assert.equal(syncRulesHelpers.classifyByHash('h1', record), 'unchanged');
+  assert.equal(syncRulesHelpers.classifyByHash('h2', record), 'changed');
+
+  const synced = {...record, remoteContentHash: 'r1'};
+  assert.equal(syncRulesHelpers.hasRemoteConflict(synced, {contentHash: 'r1'}, 'h2'), false);
+  assert.equal(syncRulesHelpers.hasRemoteConflict(synced, {contentHash: 'r2'}, 'h2'), true);
+  assert.equal(syncRulesHelpers.hasRemoteConflict(synced, {contentHash: 'h2'}, 'h2'), false);
+  assert.equal(syncRulesHelpers.hasRemoteConflict({...record, remoteId: ''}, {contentHash: 'x'}, 'h2'), false);
+});
+
+test('sync quota, batching and the bounded worker pool', async () => {
+  const usage = {plan: 'free', items: [{key: 'fileCount', usage: 48, limit: 50}, {key: 'noteCount', usage: 3, limit: null}]};
+  assert.equal(syncRulesHelpers.remainingQuota(usage), 2);
+  assert.equal(syncRulesHelpers.remainingQuota(usage, 'noteCount'), null);
+  assert.equal(syncRulesHelpers.remainingQuota({items: [{key: 'fileCount', usage: 60, limit: 50}]}), 0);
+  assert.equal(syncRulesHelpers.remainingQuota(null), null);
+  assert.deepEqual(syncRulesHelpers.chunk([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
+
+  let active = 0;
+  let peak = 0;
+  const seen = [];
+  await syncRulesHelpers.runPool([1, 2, 3, 4, 5, 6, 7], 3, async item => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise(resolve => setTimeout(resolve, 2));
+    seen.push(item);
+    active -= 1;
+  });
+  assert.equal(peak, 3);
+  assert.deepEqual(seen.sort(), [1, 2, 3, 4, 5, 6, 7]);
+
+  const controller = new AbortController();
+  const done = [];
+  await syncRulesHelpers.runPool([1, 2, 3, 4], 1, async item => {
+    done.push(item);
+    if (item === 2) controller.abort();
+  }, controller.signal);
+  assert.deepEqual(done, [1, 2]);
+});
+
+test('client version gate, reverse sync switch and semantic search mode', () => {
+  assert.equal(featureHelpers.ENABLE_REVERSE_SYNC, false);
+  assert.ok(featureHelpers.compareVersions('1.9.12', featureHelpers.MIN_CLIENT_VERSION) < 0);
+  assert.equal(featureHelpers.compareVersions('2.0.0', '2.0'), 0);
+  assert.ok(featureHelpers.compareVersions('2.1.0-beta', '2.0.9') > 0);
+  assert.deepEqual(searchResultsHelpers.readSearchMode({mode: 'semantic', degraded: true}), {mode: 'semantic', degraded: true});
+  assert.deepEqual(searchResultsHelpers.readSearchMode(null), {mode: 'keyword', degraded: false});
+});
+
+test('sync updates add each topic once and keep the remote file across renames', () => {
+  assert.deepEqual(syncRulesHelpers.missingTopicIds([1, 2, 3], [2]), [1, 3]);
+  assert.deepEqual(syncRulesHelpers.missingTopicIds([1, 2], undefined), [1, 2]);
+  assert.deepEqual(syncRulesHelpers.missingTopicIds([1], [1]), []);
+  assert.deepEqual(
+    syncRulesHelpers.acceptedTopicIds([{knowledgeBaseId: '4', ok: true}, {knowledgeBaseId: 5, ok: false}, {knowledgeBaseId: 6, ok: true}]),
+    [4, 6],
+  );
+  assert.deepEqual(syncRulesHelpers.acceptedTopicIds(null), []);
+
+  const record = {path: 'b.md', remoteId: '9', contentHash: 'h1', mtime: 10, size: 5, syncedAt: 1, topicIds: [3]};
+  const moved = syncRulesHelpers.renamedRecord(record);
+  assert.equal(moved.remoteId, '9');
+  assert.deepEqual(moved.topicIds, [3]);
+  assert.equal(syncRulesHelpers.classifyByStat({mtime: 10, size: 5}, moved), null);
+  assert.equal(syncRulesHelpers.classifyByHash('h1', moved), 'changed');
+});
+
+test('sync index keys keep each learning space apart', () => {
+  const key = syncRulesHelpers.scopedKey('ws-1', 'Study/a.md');
+  assert.notEqual(key, syncRulesHelpers.scopedKey('ws-2', 'Study/a.md'));
+  assert.deepEqual(syncRulesHelpers.splitScopedKey(key), {scope: 'ws-1', path: 'Study/a.md'});
+  assert.equal(syncRulesHelpers.scopedKey('', 'a.md'), 'a.md');
+  assert.deepEqual(syncRulesHelpers.splitScopedKey('a.md'), {scope: '', path: 'a.md'});
+});
+
+test('Obsidian write paths reject traversal and .obsidian', () => {
+  assert.equal(textHelpers.assertSafeObsidianRelativePath('Notes/a.md'), 'Notes/a.md');
+  assert.equal(textHelpers.sanitizePathSegments('../.obsidian/x'), 'x');
+  assert.throws(() => textHelpers.assertSafeObsidianRelativePath('../secret.md'));
+  assert.throws(() => textHelpers.assertSafeObsidianRelativePath('.obsidian/app.json'));
+  assert.throws(() => textHelpers.assertSafeObsidianRelativePath(''));
+});
+
+test('API errors map to codes and readable messages', () => {
+  const t = (key, params) => (params ? `${key}:${JSON.stringify(params)}` : key);
+  const debug = extra => ({method: 'GET', url: 'u', path: '/p', timeoutMs: 1, ...extra});
+  assert.equal(apiErrorHelpers.inferErrorCode(403, debug({responseBody: {code: 'MEMBERSHIP_LIMIT'}})), 'MEMBERSHIP_LIMIT');
+  assert.equal(apiErrorHelpers.inferErrorCode(413, debug()), 'TOO_LARGE');
+  assert.equal(apiErrorHelpers.inferErrorCode(404, debug()), 'NOT_FOUND');
+  assert.equal(apiErrorHelpers.inferErrorCode(undefined, debug({error: 'timeout'})), 'TIMEOUT');
+  assert.equal(apiErrorHelpers.inferErrorCode(undefined, debug()), 'NETWORK');
+
+  const quota = new apiErrorHelpers.WiseMindApiError(
+    'full',
+    403,
+    debug({responseBody: {code: 'MEMBERSHIP_LIMIT', usage: 50, limit: 50}}),
+  );
+  assert.equal(apiErrorHelpers.isMembershipLimitError(quota), true);
+  assert.equal(quota.usage, 50);
+  assert.equal(quota.limit, 50);
+
+  assert.equal(apiErrorHelpers.describeApiError({code: 'NETWORK'}, t), 'apiErrors.connectFailed');
+  assert.equal(apiErrorHelpers.describeApiError({code: 'AI_NOT_CONFIGURED', status: 409}, t), 'capability.aiNotReadyNotice');
+  assert.equal(apiErrorHelpers.describeApiError({code: 'NOT_FOUND', serverMessage: 'Not found'}, t), 'apiErrors.notFound');
+  assert.equal(apiErrorHelpers.describeApiError({code: 'NOT_FOUND', serverMessage: 'Note missing'}, t), 'Note missing');
+  assert.equal(apiErrorHelpers.describeApiError({code: 'HTTP', status: 500}, t), 'apiErrors.requestFailed:{"status":500}');
+  for (const messages of [zhCNMessages, enUSMessages]) {
+    for (const key of ['connectFailed', 'tooLarge', 'notFound', 'requestFailed']) assert.ok(messages.apiErrors[key], key);
+  }
 });

@@ -138,8 +138,16 @@ export const buildTaskHistory = (
     })),
   ].sort((a, b) => b.createdAt - a.createdAt);
 
+// Entries are rebuilt whenever history changes, so caching per entry object never serves stale text.
+const searchTextCache = new WeakMap<TaskHistoryEntry, string>();
+
 export const matchesTaskSearch = (task: TaskHistoryEntry, query: string) => {
   const keyword = query.trim().toLowerCase();
   if (!keyword) return true;
-  return `${task.title} ${task.description} ${task.content}`.toLowerCase().includes(keyword);
+  let text = searchTextCache.get(task);
+  if (text === undefined) {
+    text = `${task.title} ${task.description} ${task.content}`.toLowerCase();
+    searchTextCache.set(task, text);
+  }
+  return text.includes(keyword);
 };

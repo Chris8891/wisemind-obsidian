@@ -1,61 +1,40 @@
 <script setup lang="ts">
-  import {onBeforeUnmount, onMounted, ref} from 'vue';
+  import {onBeforeUnmount, ref, watch} from 'vue';
   import {useI18n} from 'vue-i18n';
-  import MarkdownRender from 'markstream-vue';
-  import {Notice} from 'obsidian';
+
+  import {usePlugin} from '../composables/usePlugin';
+  import {createMarkdownRenderScheduler} from '../services/markdownRender';
 
   const props = withDefaults(
     defineProps<{
       content?: string;
       streaming?: boolean;
       placeholder?: string;
+      sourcePath?: string;
     }>(),
     {
       content: '',
       streaming: false,
       placeholder: '',
+      sourcePath: '',
     },
   );
 
   const {t} = useI18n();
-  const isDark = ref(false);
-  let themeObserver: MutationObserver | undefined;
+  const plugin = usePlugin();
+  const root = ref<HTMLElement | null>(null);
+  const scheduler = createMarkdownRenderScheduler(plugin);
 
-  type MarkstreamCopyEvent = {
-    payload?: {
-      text?: unknown;
-    };
-    preventDefault?: () => void;
-  };
+  watch(
+    () => [root.value, props.content, props.streaming, props.sourcePath] as const,
+    ([el, content, streaming, sourcePath]) => {
+      if (!el) return;
+      scheduler.schedule(el, content, sourcePath, streaming);
+    },
+    {immediate: true, flush: 'post'},
+  );
 
-  const updateTheme = () => {
-    const body = document.body;
-    isDark.value =
-      body.classList.contains('theme-dark') ||
-      body.getAttribute('data-theme') === 'dark';
-  };
-
-  const handleCopy = async (payload: unknown) => {
-    const eventPayload = payload as MarkstreamCopyEvent;
-    const text = eventPayload?.payload?.text;
-    if (typeof text !== 'string' || !text) return;
-    eventPayload.preventDefault?.();
-    await globalThis.navigator?.clipboard?.writeText(text);
-    new Notice(t('shared.copied'));
-  };
-
-  onMounted(() => {
-    updateTheme();
-    themeObserver = new MutationObserver(updateTheme);
-    themeObserver.observe(document.body, {
-      attributeFilter: ['class', 'data-theme'],
-      attributes: true,
-    });
-  });
-
-  onBeforeUnmount(() => {
-    themeObserver?.disconnect();
-  });
+  onBeforeUnmount(() => scheduler.dispose());
 </script>
 
 <template>
@@ -67,24 +46,6 @@
       <span class="wm-loading-spinner"></span>
       <span>{{ props.placeholder || t('shared.generating') }}</span>
     </div>
-    <MarkdownRender
-      v-else
-      custom-id="wisemindai-obsidian"
-      :content="props.content"
-      :final="!props.streaming"
-      :is-dark="isDark"
-      html-policy="escape"
-      :typewriter="props.streaming"
-      smooth-streaming="auto"
-      :fade="false"
-      :batch-rendering="true"
-      :initial-render-batch-size="24"
-      :render-batch-size="16"
-      :render-batch-delay="8"
-      :render-batch-budget-ms="4"
-      :code-block-stream="props.streaming"
-      :show-tooltips="false"
-      @copy="handleCopy"
-    />
+    <div v-show="props.content.trim()" ref="root" class="wm-markdown markdown-rendered"></div>
   </div>
 </template>

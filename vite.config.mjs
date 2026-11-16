@@ -48,12 +48,26 @@ export default defineConfig({
         }
       : null,
   ].filter(Boolean),
+  // Library mode keeps process.env untouched, which would ship Vue's dev build.
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(syncObsidian ? 'development' : 'production'),
+    __VUE_OPTIONS_API__: 'false',
+    __VUE_PROD_DEVTOOLS__: 'false',
+    __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false',
+    __VUE_I18N_FULL_INSTALL__: 'false',
+    __VUE_I18N_LEGACY_API__: 'false',
+    __INTLIFY_PROD_DEVTOOLS__: 'false',
+    __INTLIFY_JIT_COMPILATION__: 'true',
+  },
   css: {
     postcss: {
       plugins: [tailwindcss()],
     },
   },
+  // minAppVersion 1.5.0 runs on Electron 28 (Chrome 120); both targets are needed or class fields get down-leveled.
+  esbuild: {target: 'es2022'},
   build: {
+    target: 'es2022',
     sourcemap: false,
     emptyOutDir: true,
     lib: {

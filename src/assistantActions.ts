@@ -19,6 +19,8 @@ const defaultLabels: AssistantActionLabels = {
   sourceHeading: (index, path) => `Source ${index}: ${path}`,
 };
 
+export type AssistantSummaryPreset = 'summary' | 'insights';
+
 export type AssistantActionPlan = {
   kind: AssistantActionKind;
   sourceKind: AssistantSourceKind;
@@ -26,6 +28,8 @@ export type AssistantActionPlan = {
   sourcePath: string;
   sourcePaths?: string[];
   content: string;
+  /** Insights reuse the summary page, but ask for key points instead of a full summary. */
+  preset?: AssistantSummaryPreset;
 };
 
 export const buildAssistantActionPlan = (options: {
@@ -33,6 +37,7 @@ export const buildAssistantActionPlan = (options: {
   currentNote?: ObsidianSourceItem | null;
   selectedText?: string;
   labels?: AssistantActionLabels;
+  preset?: AssistantSummaryPreset;
 }): AssistantActionPlan => {
   const selectedText = options.selectedText?.trim() || '';
   const labels = options.labels || defaultLabels;
@@ -44,6 +49,7 @@ export const buildAssistantActionPlan = (options: {
       sourceTitle: labels.selectionExcerpt(options.currentNote?.title || labels.currentNote),
       sourcePath: options.currentNote?.path || '',
       content: selectedText,
+      preset: options.preset,
     };
   }
 
@@ -57,6 +63,7 @@ export const buildAssistantActionPlan = (options: {
     sourceTitle: options.currentNote.title,
     sourcePath: options.currentNote.path,
     content: options.currentNote.markdown || options.currentNote.plainText,
+    preset: options.preset,
   };
 };
 

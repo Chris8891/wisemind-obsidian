@@ -21,15 +21,15 @@ import {
   MicrophoneCaptureError,
   startAudioCapture,
 } from './audioCapture';
-import {normalizeConfirmedTranscriptionSegments} from './transcriptionLiveNoteContent';
-import {TranscriptionLiveNoteWriter} from './transcriptionLiveNoteWriter';
 import {
   transcriptionHistoryToDetail,
   upsertTranscriptionHistory,
 } from './transcriptionHistory';
+import {normalizeConfirmedTranscriptionSegments} from './transcriptionLiveNoteContent';
+import {TranscriptionLiveNoteWriter} from './transcriptionLiveNoteWriter';
 import {parseTranscriptionOrganizationMarkdown} from './transcriptionOrganization';
 import {appendTranscriptionToNote, saveTranscriptionAsNewNote} from './transcriptionResult';
-import {WiseMindTranscriptionSocket} from './transcriptionSocket';
+import {TranscriptionSocketError, WiseMindTranscriptionSocket} from './transcriptionSocket';
 
 export type TranscriptionControllerStatus =
   | 'idle'
@@ -68,6 +68,11 @@ type StartOptions = {
   liveWriteToNote?: boolean;
 };
 
+class TranscriptionStartCancelled extends Error {}
+
+const STOP_RESULT_POLL_MS = 5_000;
+const STOP_RESULT_MAX_POLLS = 12;
+
 export class TranscriptionController {
   private readonly mutableState = reactive<ControllerState>({
     status: 'idle',
@@ -95,6 +100,10 @@ export class TranscriptionController {
   private liveNoteWriter: TranscriptionLiveNoteWriter | null = null;
   private segmentIds = new Set<string>();
   private completionRefreshPromise: Promise<void> | null = null;
+  private startToken = 0;
+  private stopFailed = false;
+  private resultPollTimer = 0;
+  private resultPollCount = 0;
 
   constructor(
     private readonly plugin: WiseMindObsidianPlugin,
@@ -115,23 +124,39 @@ export class TranscriptionController {
     }
     this.resetState('starting');
     this.targetPath = options.targetPath || '';
+    // stop() or dispose() during startup bumps the token; every await below re-checks it so a cancelled
+    // start never opens the microphone or flips the state back to recording.
+    const token = ++this.startToken;
+    const ensureCurrent = () => {
+      if (token !== this.startToken) throw new TranscriptionStartCancelled();
+    };
+    let socket: WiseMindTranscriptionSocket | null = null;
+    let capture: AudioCaptureController | null = null;
+    let startedRecordId = '';
     try {
       const quota = await this.plugin.api.getTranscriptionMembership();
+      ensureCurrent();
       if (!quota.canStart) throw new Error(this.t('transcription.quotaUnavailable'));
       await checkAudioCaptureAvailability(options.deviceId);
-      this.socket = new WiseMindTranscriptionSocket(this.plugin.settings.apiBaseUrl, {
-        onEvent: event => void this.handleRuntimeEvent(event),
+      ensureCurrent();
+      socket = new WiseMindTranscriptionSocket(this.plugin.settings.apiBaseUrl, {
+        onEvent: event => {
+          if (this.socket === socket) void this.handleRuntimeEvent(event);
+        },
         onConnectionChange: status => {
+          if (this.socket !== socket) return;
           this.mutableState.connectionStatus = status;
           if (status === 'connected') this.mutableState.error = '';
           this.notifyStatus();
         },
         onError: error => {
-          if (this.isActive) this.mutableState.error = error.message;
+          if (this.socket === socket && this.isActive) this.mutableState.error = this.errorText(error);
         },
       });
+      this.socket = socket;
       const workspaceState = await this.plugin.api.getWorkspaceState().catch(() => null);
-      const record = await this.socket.start({
+      ensureCurrent();
+      const record = await socket.start({
         title: options.title,
         scenario: options.scenario,
         providerId: options.providerId,
@@ -139,18 +164,27 @@ export class TranscriptionController {
         saveAudio: options.saveAudio,
         speakerDiarization: options.speakerDiarization,
         speakerCount: options.speakerCount,
+        // Obsidian 自行采音后经 WS 推流，桌面端不要再开本机麦
+        audioCaptureMode: 'client',
       });
+      startedRecordId = record.id;
+      ensureCurrent();
       this.mutableState.record = record;
-      this.capture = await startAudioCapture({
+      capture = await startAudioCapture({
         deviceId: options.deviceId,
         sampleRate: 16000,
         chunkMs: 100,
-        onDeviceEnded: () => void this.handleDeviceEnded(),
+        onDeviceEnded: () => {
+          if (this.capture === capture) void this.handleDeviceEnded();
+        },
         onChunk: (chunk, level) => {
+          if (this.capture !== capture) return;
           this.mutableState.audioLevel = level;
           if (this.mutableState.status === 'recording') this.socket?.sendAudio(chunk, level);
         },
       });
+      ensureCurrent();
+      this.capture = capture;
       this.mutableState.status = 'recording';
       this.activeStartedAt = Date.now();
       this.startClock();
@@ -183,14 +217,23 @@ export class TranscriptionController {
       this.notifyStatus();
       return record;
     } catch (error) {
-      this.capture?.stop();
-      this.capture = null;
-      if (this.mutableState.record?.id) await this.socket?.stop().catch(() => undefined);
-      this.socket?.close();
-      this.socket = null;
+      capture?.stop();
+      if (this.capture === capture) this.capture = null;
+      if (startedRecordId) await socket?.stop().catch(() => undefined);
+      socket?.close();
+      if (this.socket === socket) this.socket = null;
+      if (error instanceof TranscriptionStartCancelled || token !== this.startToken) return null;
       await this.fail(this.microphoneErrorMessage(error));
       throw error;
     }
+  }
+
+  /** Abandons an in-flight start; the pending start() cleans up its own socket and capture. */
+  private cancelStart() {
+    this.startToken += 1;
+    this.socket = null;
+    this.capture = null;
+    this.resetState('idle');
   }
 
   async pause() {
@@ -204,6 +247,10 @@ export class TranscriptionController {
   }
 
   async stop() {
+    if (this.mutableState.status === 'starting') {
+      this.cancelStart();
+      return;
+    }
     if (!this.isActive || this.mutableState.status === 'stopping') return;
     this.freezeElapsed();
     this.mutableState.status = 'stopping';
@@ -211,8 +258,18 @@ export class TranscriptionController {
     this.capture = null;
     this.mutableState.audioLevel = 0;
     this.notifyStatus();
-    await this.socket?.stop();
-    window.setTimeout(() => void this.refreshCompletedDetail(), 6_000);
+    // A failed stop command must surface inline with the retry button instead of leaving the page
+    // spinning in "saving" forever.
+    try {
+      await this.socket?.stop();
+      this.stopFailed = false;
+    } catch {
+      this.stopFailed = true;
+      this.mutableState.error = this.t('transcription.errors.stopFailed');
+      this.notifyStatus();
+      return;
+    }
+    this.scheduleResultPoll();
   }
 
   async mark(kind: TranscriptionMarkKind) {
@@ -315,7 +372,21 @@ export class TranscriptionController {
     if (this.mutableState.status !== 'stopping') return;
     this.mutableState.error = '';
     this.notifyStatus();
+    if (this.stopFailed) {
+      try {
+        if (!this.socket) throw new Error(this.t('transcription.errors.stopFailed'));
+        await this.socket.stop();
+        this.stopFailed = false;
+      } catch {
+        // Second failure: give up on this session so the user can reset or open the saved record.
+        await this.fail(this.t('transcription.errors.stopFailed'));
+        return;
+      }
+      this.scheduleResultPoll();
+      return;
+    }
     await this.refreshCompletedDetail();
+    if (this.mutableState.status === 'stopping' && !this.mutableState.error) this.scheduleResultPoll();
   }
 
   reset() {
@@ -327,15 +398,43 @@ export class TranscriptionController {
   }
 
   async dispose() {
+    if (this.mutableState.status === 'starting') this.cancelStart();
     if (this.isActive) {
       await this.stop().catch(() => undefined);
     }
+    this.clearResultPoll();
     this.capture?.stop();
     this.capture = null;
     this.stopClock();
     this.socket?.close();
     this.socket = null;
     await this.releaseLiveNoteWriter();
+  }
+
+  /** The completion event can be lost on a dropped socket, so the final result is also polled for a while. */
+  private scheduleResultPoll(reset = true) {
+    if (reset) this.resultPollCount = 0;
+    window.clearTimeout(this.resultPollTimer);
+    this.resultPollTimer = window.setTimeout(() => void this.pollCompletedDetail(), STOP_RESULT_POLL_MS);
+  }
+
+  private clearResultPoll() {
+    window.clearTimeout(this.resultPollTimer);
+    this.resultPollTimer = 0;
+  }
+
+  private async pollCompletedDetail() {
+    this.resultPollTimer = 0;
+    if (this.mutableState.status !== 'stopping') return;
+    await this.refreshCompletedDetail();
+    if (this.mutableState.status !== 'stopping' || this.mutableState.error) return;
+    this.resultPollCount += 1;
+    if (this.resultPollCount >= STOP_RESULT_MAX_POLLS) {
+      this.mutableState.error = this.t('transcription.errors.resultPending');
+      this.notifyStatus();
+      return;
+    }
+    this.scheduleResultPoll(false);
   }
 
   private async handleRuntimeEvent(event: TranscriptionRuntimeEvent) {
@@ -386,6 +485,7 @@ export class TranscriptionController {
       this.capture = null;
       this.mutableState.status = 'stopping';
       this.notifyStatus();
+      this.scheduleResultPoll();
       return;
     }
     if (event.type === 'error') {
@@ -505,6 +605,7 @@ export class TranscriptionController {
   }
 
   private async fail(message: string) {
+    this.clearResultPoll();
     this.capture?.stop();
     this.capture = null;
     this.freezeElapsed();
@@ -528,6 +629,8 @@ export class TranscriptionController {
 
   private resetState(status: TranscriptionControllerStatus) {
     this.stopClock();
+    this.clearResultPoll();
+    this.stopFailed = false;
     Object.assign(this.mutableState, {
       status,
       connectionStatus: 'idle',
@@ -586,6 +689,13 @@ export class TranscriptionController {
   private microphoneErrorMessage(error: unknown) {
     if (error instanceof MicrophoneCaptureError) {
       return this.t(`transcription.microphoneErrors.${error.code}`);
+    }
+    return this.errorText(error);
+  }
+
+  private errorText(error: unknown) {
+    if (error instanceof TranscriptionSocketError) {
+      return error.serverMessage || this.t(`transcription.socketErrors.${error.code}`);
     }
     return error instanceof Error ? error.message : this.t('transcription.errors.unknown');
   }

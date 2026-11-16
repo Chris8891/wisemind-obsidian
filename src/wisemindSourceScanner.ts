@@ -1,5 +1,5 @@
 import { stripSourceMarkers } from './markers';
-import { hashText, markdownToPlainText, normalizeTags } from './text';
+import { hashText, markdownToPlainText, normalizeWiseMindTags } from './text';
 import type { WiseMindFolder, WiseMindSnapshot, WiseMindSourceItem } from './types';
 import type { WiseMindApiClient } from './wisemindApi';
 
@@ -54,7 +54,7 @@ export const normalizeWiseMindNote = async (note: any, folders: WiseMindFolder[]
     title,
     markdown,
     plainText: firstText(note.text, markdownToPlainText(markdown)),
-    tags: normalizeTags(note.tags),
+    tags: normalizeWiseMindTags(note),
     folderPath,
     updatedAt: note.updated_at || note.lastModified,
     contentHash: await hashText(markdown),
@@ -72,7 +72,7 @@ export const normalizeWiseMindDocument = async (doc: any, folders: WiseMindFolde
     title,
     markdown,
     plainText: markdownToPlainText(markdown),
-    tags: normalizeTags(doc.tags),
+    tags: normalizeWiseMindTags(doc),
     folderPath,
     updatedAt: doc.updated_at || doc.lastModified,
     contentHash: await hashText(markdown),
@@ -92,7 +92,7 @@ export const normalizeWiseMindKnowledgeDocument = async (doc: any, base: any): P
     title,
     markdown,
     plainText: markdownToPlainText(markdown),
-    tags: normalizeTags(doc.tags),
+    tags: normalizeWiseMindTags(doc),
     folderPath: `Knowledge/${knowledgeBaseName}`,
     updatedAt: doc.updated_at,
     contentHash: await hashText(markdown),

@@ -1,0 +1,373 @@
+// Assistant tab interaction polish (workbench and shared assistant pieces). Base styles live in v2.scss.
+// Dialogs, popovers and selects are portaled out of .wm2-assistant, so they are listed as extra scopes.
+
+$assistant-scopes: '.wm2-assistant, .wm2-sum-dialog, .wm2-cards-dialog, .wm2-chat-history-dialog, .wm2-chat-popover, .wm2-sum-select, .wm2-cards-menu';
+$focus-ring: 2px solid color-mix(in srgb, var(--wm2-brand) 60%, transparent);
+
+@keyframes wm2-assist-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes wm2-assist-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes wm2-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes wm2-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+// ---------- Vue transitions ----------
+// Enter fades up; leave fades out. With mode="out-in" the next view waits for leave.
+.wm2-view-enter-active,
+.wm2-item-enter-active {
+  animation: wm2-assist-fade 0.2s ease-out;
+}
+
+.wm2-view-leave-active {
+  transition: opacity 0.14s ease;
+}
+
+.wm2-view-leave-to {
+  opacity: 0;
+}
+
+.wm2-expand-enter-active {
+  animation: wm2-assist-fade 0.16s ease-out;
+}
+
+.wm2-expand-leave-active {
+  transition: opacity 0.12s ease;
+}
+
+.wm2-expand-leave-to {
+  opacity: 0;
+}
+
+// Keep-alive panes (v-show style): only the active pane is displayed, with a soft enter.
+.wm2-keep-pane {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+
+  &.is-active {
+    display: flex;
+    animation: wm2-assist-fade 0.2s ease-out;
+  }
+}
+
+// ---------- Hover / pressed / focus states ----------
+:is(#{$assistant-scopes}) {
+  button.wm2-btn,
+  button.wm2-icon-btn,
+  button.wm2-chip,
+  button.wm2-send,
+  button.wm2-sum-dest,
+  .wm2-segmented button {
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      filter 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.1s ease;
+  }
+
+  button.wm2-btn,
+  button.wm2-icon-btn,
+  button.wm2-chip,
+  button.wm2-send,
+  button.wm2-action,
+  button.wm2-sum-dest,
+  button.wm2-link-button,
+  button.wm2-plain-button,
+  .wm2-segmented button,
+  .wm2-disabled-tip {
+    &:focus-visible {
+      outline: $focus-ring;
+      outline-offset: 2px;
+    }
+  }
+
+  button.wm2-btn:active:not(:disabled),
+  button.wm2-chip:active,
+  .wm2-segmented button:active {
+    transform: scale(0.97);
+  }
+
+  button.wm2-icon-btn:active:not(:disabled),
+  button.wm2-send:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+
+  button.wm2-icon-btn:active:not(:disabled) {
+    background: var(--wm2-line);
+  }
+
+  button.wm2-icon-btn.is-active {
+    background: var(--wm2-brand-soft);
+  }
+
+  button.wm2-link-button:active {
+    opacity: 0.7;
+  }
+}
+
+.wisemindai-obsidian-root .wm2-assistant button.wm2-action {
+  &:active {
+    box-shadow: var(--wm2-btn-shadow);
+    transform: scale(0.98);
+  }
+}
+
+// A disabled button swallows pointer events, so its wrapper carries the "why disabled" tooltip.
+.wm2-disabled-tip {
+  display: inline-flex;
+  flex: none;
+  border-radius: 999px;
+  cursor: not-allowed;
+
+  > button:disabled {
+    pointer-events: none;
+  }
+}
+
+// ---------- Immediate feedback ----------
+:is(#{$assistant-scopes}) button.wm2-icon-btn.wm2-copy-btn.is-done {
+  width: auto;
+  min-width: 24px;
+  gap: 3px;
+  padding: 0 6px;
+  background: var(--wm2-success-soft);
+  color: var(--wm2-success);
+  font-size: 11px;
+  animation: wm2-assist-pop 0.16s ease-out;
+
+  .wm-icon {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+:is(#{$assistant-scopes}) button.wm2-btn.is-ghost.wm2-flash-done,
+.wm2-flash-done {
+  color: var(--wm2-success);
+  animation: wm2-assist-pop 0.16s ease-out;
+}
+
+span.wm2-flash-done {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+
+  .wm-icon {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+:is(#{$assistant-scopes}) button.wm2-btn.is-primary.is-done {
+  animation: wm2-assist-pop 0.16s ease-out;
+}
+
+.wm2-spinner.is-on-primary {
+  border-color: rgb(255 255 255 / 35%);
+  border-top-color: #fff;
+}
+
+// ---------- Loading placeholders ----------
+.wm2-skeleton {
+  display: block;
+  flex: 1;
+  height: 10px;
+  min-width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--wm2-soft) 25%, var(--wm2-line) 50%, var(--wm2-soft) 75%);
+  background-size: 200% 100%;
+  animation: wm2-shimmer 1.4s ease-in-out infinite;
+
+  &.is-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 5px;
+  }
+
+  &.is-short {
+    flex: none;
+    width: 55%;
+  }
+}
+
+.wm2-skeleton-lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 0;
+}
+
+.wm2-list-row.wm2-skeleton-row {
+  pointer-events: none;
+}
+
+// Blinking caret at the end of streaming markdown.
+.wm2-stream-caret .markdown-rendered {
+  > :last-child:not(ul, ol, pre, table, blockquote, div)::after,
+  > :is(ul, ol) > li:last-child::after,
+  > div:last-child > :last-child:not(ul, ol, pre, table)::after {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 1em;
+    margin-left: 2px;
+    border-radius: 1px;
+    background: var(--wm2-brand);
+    vertical-align: -0.15em;
+    animation: wm2-caret-blink 1s steps(1) infinite;
+  }
+}
+
+// ---------- Workbench ----------
+.wm2-assistant .wm2-list-row {
+  &.is-clickable {
+    cursor: pointer;
+  }
+
+  &.is-clickable:active {
+    background: var(--wm2-soft);
+  }
+
+  &:focus-within {
+    background: color-mix(in srgb, var(--wm2-surface) 80%, transparent);
+  }
+
+  .wm2-list-main > small {
+    max-width: 100%;
+  }
+}
+
+.wm2-assistant button.wm2-btn.wm2-workbench-output {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wm2-assistant .wm2-composer {
+  cursor: text;
+  transition: box-shadow 0.15s ease;
+
+  &:focus-within {
+    box-shadow: var(--wm2-card-shadow), 0 0 0 3px var(--wm2-brand-soft);
+  }
+
+  textarea {
+    max-height: 160px;
+    overflow-y: auto;
+    field-sizing: content;
+  }
+}
+
+.wm2-assistant .wm2-workbench .wm2-empty > .wm2-btn {
+  margin-top: 2px;
+}
+
+.wm2-assistant .wm2-workbench .wm2-empty.is-compact {
+  strong {
+    color: var(--text-normal);
+    font-size: 14px;
+  }
+
+  p {
+    max-width: 280px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+.wm2-assistant .wm2-start {
+  .wm2-empty {
+    gap: 8px;
+  }
+
+  strong {
+    color: var(--text-normal);
+    font-size: 14px;
+  }
+
+  p {
+    max-width: 280px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+.wm2-start-icon {
+  color: var(--wm2-brand);
+}
+
+.wm2-start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+// ---------- Reduced motion ----------
+@media (prefers-reduced-motion: reduce) {
+  :is(#{$assistant-scopes}),
+  :is(#{$assistant-scopes}) *:not(.wm2-spinner),
+  .wm2-view-enter-active,
+  .wm2-view-leave-active,
+  .wm2-item-enter-active,
+  .wm2-expand-enter-active,
+  .wm2-expand-leave-active,
+  .wm2-keep-pane.is-active {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .wm2-skeleton,
+  .wm2-stream-caret .markdown-rendered *::after {
+    animation: none !important;
+  }
+
+  :is(#{$assistant-scopes}) {
+    button:active {
+      transform: none !important;
+    }
+  }
+}

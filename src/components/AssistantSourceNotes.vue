@@ -22,6 +22,8 @@
   const plugin = usePlugin();
   const {t} = useI18n();
 
+  const fileName = (path: string) => path.split('/').pop() || path;
+
   const openNote = (path: string) => {
     void openObsidianNote(plugin.app, path, {
       moved: t('obsidianMessages.noteMoved'),
@@ -31,34 +33,44 @@
 </script>
 
 <template>
-  <div v-if="mode === 'current' && currentPath" class="wm-source-note-list">
-    <span class="wm-source-note-chip">
+  <div v-if="mode === 'current' && currentPath" class="wm2-source-chips">
+    <span class="wm2-chip wm2-source-chip">
       <DocumentTextIcon class="wm-icon" />
-      <span>{{ currentPath }}</span>
+      <WmTooltip :content="currentPath">
+        <span>{{ fileName(currentPath) }}</span>
+      </WmTooltip>
       <WmTooltip :content="t('sourceNotes.openNote')">
-        <button class="wm-icon-button" type="button" @click="openNote(currentPath)">
+        <button class="wm2-icon-btn" type="button" @click="openNote(currentPath)">
+          <span class="wm-visually-hidden">{{ t('sourceNotes.openNote') }}</span>
           <ArrowTopRightOnSquareIcon class="wm-icon" />
         </button>
       </WmTooltip>
     </span>
   </div>
 
-  <div v-else-if="mode === 'multi' && selectedNotes.length" class="wm-source-note-list">
-    <div v-for="note in selectedNotes" :key="note.path" class="wm-source-note-row">
-      <span class="wm-source-note-chip">
-        <DocumentTextIcon class="wm-icon" />
-        <span>{{ note.path }}</span>
-        <WmTooltip :content="t('sourceNotes.openNote')">
-          <button class="wm-icon-button" type="button" @click="openNote(note.path)">
-            <ArrowTopRightOnSquareIcon class="wm-icon" />
-          </button>
-        </WmTooltip>
-        <WmTooltip :content="t('sourceNotes.remove')">
-          <button class="wm-icon-button" type="button" @click="emit('remove', note.path)">
-            <XMarkIcon class="wm-icon" />
-          </button>
-        </WmTooltip>
-      </span>
-    </div>
-  </div>
+  <TransitionGroup
+    v-else-if="mode === 'multi' && selectedNotes.length"
+    tag="div"
+    name="wm2-chip-pop"
+    class="wm2-source-chips"
+  >
+    <span v-for="note in selectedNotes" :key="note.path" class="wm2-chip wm2-source-chip">
+      <DocumentTextIcon class="wm-icon" />
+      <WmTooltip :content="note.path">
+        <span>{{ note.title || fileName(note.path) }}</span>
+      </WmTooltip>
+      <WmTooltip :content="t('sourceNotes.openNote')">
+        <button class="wm2-icon-btn" type="button" @click="openNote(note.path)">
+          <span class="wm-visually-hidden">{{ t('sourceNotes.openNote') }}</span>
+          <ArrowTopRightOnSquareIcon class="wm-icon" />
+        </button>
+      </WmTooltip>
+      <WmTooltip :content="t('sourceNotes.remove')">
+        <button class="wm2-icon-btn is-danger" type="button" @click="emit('remove', note.path)">
+          <span class="wm-visually-hidden">{{ t('sourceNotes.remove') }}</span>
+          <XMarkIcon class="wm-icon" />
+        </button>
+      </WmTooltip>
+    </span>
+  </TransitionGroup>
 </template>

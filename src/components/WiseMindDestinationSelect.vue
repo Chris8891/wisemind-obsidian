@@ -59,6 +59,9 @@ const loadOptions = async () => {
     if (!enabled.length && props.modelValue) {
       emit('update:modelValue', '');
     }
+  } catch {
+    // The desktop app may be offline; leave the list empty instead of failing the mounting page.
+    options.value = [];
   } finally {
     loading.value = false;
   }
@@ -73,14 +76,17 @@ watch(() => props.target, loadOptions);
 </script>
 
 <template>
-  <div class="wm-destination-select">
+  <div class="wm2-destination">
     <RekaSelect
       :model-value="selectValue"
       :options="options"
       :placeholder="loading ? t('destinationSelect.loading') : placeholder"
       @update:model-value="updateValue"
     />
-    <small v-if="target === 'knowledge' && options.length && options.every(item => item.disabled)" class="wm-muted">
+    <small
+      v-if="target === 'knowledge' && options.length && options.every(item => item.disabled)"
+      class="wm2-muted"
+    >
       {{ t('destinationSelect.noKnowledgeBases') }}
     </small>
   </div>

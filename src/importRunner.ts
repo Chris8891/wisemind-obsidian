@@ -34,6 +34,7 @@ export type ObsidianToWiseMindImportLabels = {
   knowledgeDesc: string;
   knowledgeUpdated: (target: string) => string;
   knowledgeCreated: (target: string) => string;
+  knowledgeSkipped: (target: string) => string;
   failed: string;
   failedTarget: string;
 };
@@ -42,15 +43,17 @@ const defaultLabels: ObsidianToWiseMindImportLabels = {
   defaultKnowledgeBase: 'Obsidian import',
   note: 'Note',
   document: 'Document',
-  knowledge: 'Knowledge base',
+  knowledge: 'Topic',
   rootFolder: 'Root',
   noteUpdated: target => `Updated WiseMindAI note${target}`,
   noteCreated: target => `Imported as WiseMindAI note${target}`,
   documentUpdated: target => `Updated WiseMindAI document${target}`,
   documentCreated: target => `Imported as WiseMindAI document${target}`,
   knowledgeDesc: 'Imported from Obsidian',
-  knowledgeUpdated: target => `Updated WiseMindAI knowledge base: ${target}`,
-  knowledgeCreated: target => `Imported into WiseMindAI knowledge base: ${target}`,
+  knowledgeUpdated: target => `Updated WiseMindAI topic: ${target}`,
+  knowledgeCreated: target => `Imported into WiseMindAI topic: ${target}`,
+  knowledgeSkipped: target =>
+    `Skipped duplicate document in WiseMindAI topic: ${target}`,
   failed: 'Import failed',
   failedTarget: 'Failed',
 };
@@ -176,8 +179,12 @@ export const runObsidianToWiseMindImport = async (options: ObsidianToWiseMindOpt
               await options.api.updateKnowledgeDocument(existing.id, payload);
               push(result, item.title, item.path, 'updated', labels.knowledgeUpdated(baseName), wiseMindTargetLabel(labels.knowledge, baseName, labels));
             } else {
-              await options.api.createKnowledgeDocument(payload);
-              push(result, item.title, item.path, 'created', labels.knowledgeCreated(baseName), wiseMindTargetLabel(labels.knowledge, baseName, labels));
+              const createResult = await options.api.createKnowledgeDocument(payload);
+              if (createResult?.created === false || createResult?.skipped) {
+                push(result, item.title, item.path, 'skipped', labels.knowledgeSkipped(baseName), wiseMindTargetLabel(labels.knowledge, baseName, labels));
+              } else {
+                push(result, item.title, item.path, 'created', labels.knowledgeCreated(baseName), wiseMindTargetLabel(labels.knowledge, baseName, labels));
+              }
             }
           }
         }

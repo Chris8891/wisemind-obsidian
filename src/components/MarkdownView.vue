@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue';
-import { MarkdownRenderer } from 'obsidian';
+import {onBeforeUnmount, ref, watch} from 'vue';
 
-import { usePlugin } from '../composables/usePlugin';
+import {usePlugin} from '../composables/usePlugin';
+import {createMarkdownRenderScheduler} from '../services/markdownRender';
 
 const props = defineProps<{
   markdown: string;
@@ -11,25 +11,19 @@ const props = defineProps<{
 
 const plugin = usePlugin();
 const root = ref<HTMLElement | null>(null);
+const scheduler = createMarkdownRenderScheduler(plugin);
 
-const render = async () => {
-  await nextTick();
-  if (!root.value) return;
-  root.value.empty();
-  try {
-    const renderer = MarkdownRenderer as any;
-    const task = typeof renderer.renderMarkdown === 'function'
-      ? renderer.renderMarkdown(props.markdown, root.value, props.sourcePath || '', plugin)
-      : renderer.render(plugin.app, props.markdown, root.value, props.sourcePath || '', plugin);
-    await Promise.resolve(task);
-  } catch {
-    root.value.textContent = props.markdown;
-  }
-};
+watch(
+  () => [root.value, props.markdown, props.sourcePath] as const,
+  ([el, markdown, sourcePath]) => {
+    if (el) scheduler.schedule(el, markdown, sourcePath || '', false);
+  },
+  {immediate: true, flush: 'post'},
+);
 
-watch(() => [props.markdown, props.sourcePath], () => void render(), { immediate: true });
+onBeforeUnmount(() => scheduler.dispose());
 </script>
 
 <template>
-  <div ref="root" class="wm-markdown" ></div>
+  <div ref="root" class="wm-markdown markdown-rendered"></div>
 </template>
